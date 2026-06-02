@@ -19,6 +19,10 @@ function requireDb() {
   return db;
 }
 
+function removeUndefinedFields<T extends Record<string, unknown>>(data: T) {
+  return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
+}
+
 export function subscribeUserCollection<T extends { id: string }>(
   userId: string,
   collectionName: string,
@@ -43,18 +47,18 @@ export function subscribeUserCollection<T extends { id: string }>(
 
 export async function addExpense(input: Omit<Expense, "id" | "createdAt" | "updatedAt">) {
   const database = requireDb();
-  await addDoc(collection(database, "expenses"), {
+  await addDoc(collection(database, "expenses"), removeUndefinedFields({
     ...input,
     amount: Number(input.amount),
     createdAt: nowIso(),
     updatedAt: nowIso(),
     createdServerAt: serverTimestamp()
-  });
+  }));
 }
 
 export async function updateExpense(id: string, input: Partial<Expense>) {
   const database = requireDb();
-  await updateDoc(doc(database, "expenses", id), { ...input, updatedAt: nowIso() });
+  await updateDoc(doc(database, "expenses", id), removeUndefinedFields({ ...input, updatedAt: nowIso() }));
 }
 
 export async function deleteExpense(id: string) {
@@ -64,26 +68,26 @@ export async function deleteExpense(id: string) {
 
 export async function addRevenue(input: Omit<Revenue, "id" | "createdAt">) {
   const database = requireDb();
-  await addDoc(collection(database, "revenues"), {
+  await addDoc(collection(database, "revenues"), removeUndefinedFields({
     ...input,
     amount: Number(input.amount),
     orders: Number(input.orders),
     createdAt: nowIso(),
     createdServerAt: serverTimestamp()
-  });
+  }));
 }
 
 export async function addInventoryItem(input: Omit<InventoryItem, "id" | "updatedAt">) {
   const database = requireDb();
-  await addDoc(collection(database, "inventory"), { ...input, updatedAt: nowIso() });
+  await addDoc(collection(database, "inventory"), removeUndefinedFields({ ...input, updatedAt: nowIso() }));
 }
 
 export async function updateInventoryItem(id: string, input: Partial<InventoryItem>) {
   const database = requireDb();
-  await updateDoc(doc(database, "inventory", id), { ...input, updatedAt: nowIso() });
+  await updateDoc(doc(database, "inventory", id), removeUndefinedFields({ ...input, updatedAt: nowIso() }));
 }
 
 export async function addBudget(input: Omit<Budget, "id" | "spent">) {
   const database = requireDb();
-  await addDoc(collection(database, "budgets"), { ...input, spent: 0 });
+  await addDoc(collection(database, "budgets"), removeUndefinedFields({ ...input, spent: 0 }));
 }
