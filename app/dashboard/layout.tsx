@@ -1,0 +1,28 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { Sidebar } from "@/components/dashboard/sidebar";
+import { Topbar } from "@/components/dashboard/topbar";
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading, configured } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && configured && !user) router.push("/login");
+  }, [configured, loading, router, user]);
+
+  if (loading) {
+    return <div className="grid min-h-screen place-items-center text-muted-foreground">Loading workspace...</div>;
+  }
+
+  return (
+    <div className="min-h-screen lg:pl-72">
+      <Sidebar />
+      <Topbar />
+      <main className="px-4 py-6 lg:px-8">{children}</main>
+    </div>
+  );
+}
