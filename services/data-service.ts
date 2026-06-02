@@ -4,7 +4,6 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
@@ -28,8 +27,17 @@ export function subscribeUserCollection<T extends { id: string }>(
 ) {
   const database = requireDb();
   return onSnapshot(
-    query(collection(database, collectionName), where("userId", "==", userId), orderBy(sortField, "desc")),
-    (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as T))
+    query(collection(database, collectionName), where("userId", "==", userId)),
+    (snapshot) => {
+      const items = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as T);
+      callback(
+        items.sort((a, b) => {
+          const left = String((a as Record<string, unknown>)[sortField] || "");
+          const right = String((b as Record<string, unknown>)[sortField] || "");
+          return right.localeCompare(left);
+        })
+      );
+    }
   );
 }
 

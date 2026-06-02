@@ -16,22 +16,26 @@ service cloud.firestore {
     }
 
     match /expenses/{documentId} {
-      allow read, create: if owns(request.resource.data.userId);
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
       allow update, delete: if owns(resource.data.userId);
     }
 
     match /revenues/{documentId} {
-      allow read, create: if owns(request.resource.data.userId);
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
       allow update, delete: if owns(resource.data.userId);
     }
 
     match /inventory/{documentId} {
-      allow read, create: if owns(request.resource.data.userId);
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
       allow update, delete: if owns(resource.data.userId);
     }
 
     match /budgets/{documentId} {
-      allow read, create: if owns(request.resource.data.userId);
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
       allow update, delete: if owns(resource.data.userId);
     }
   }
