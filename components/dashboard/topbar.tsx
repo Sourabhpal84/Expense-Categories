@@ -33,8 +33,8 @@ export function Topbar() {
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
           <div className="hidden text-right sm:block">
-            <p className="text-sm font-medium">{user?.displayName || "Demo founder"}</p>
-            <p className="text-xs text-muted-foreground">{user?.email || "demo@magneetoz.local"}</p>
+            <p className="text-sm font-medium">{user?.displayName || "Sourabh pal"}</p>
+            <p className="text-xs text-muted-foreground">{user?.email || "magneetozgravito@gmail.com"}</p>
           </div>
         </div>
       </div>
