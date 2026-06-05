@@ -38,5 +38,10 @@ service cloud.firestore {
       allow create: if owns(request.resource.data.userId);
       allow update, delete: if owns(resource.data.userId);
     }
+
+    match /auditLogs/{documentId} {
+      allow read, create: if signedIn();
+      allow update, delete: if false;
+    }
   }
 }

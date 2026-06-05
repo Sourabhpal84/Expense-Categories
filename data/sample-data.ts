@@ -7,15 +7,16 @@ export const sampleExpenses: Expense[] = [
 ];
 
 export const sampleRevenue: Revenue[] = [
-  { id: "r1", userId: "demo", product: "Signature Box", orders: 42, amount: 54600, date: "2026-05-03", channel: "WhatsApp", createdAt: "2026-05-03" },
-  { id: "r2", userId: "demo", product: "Premium Hamper", orders: 18, amount: 46800, date: "2026-05-08", channel: "Website", createdAt: "2026-05-08" },
-  { id: "r3", userId: "demo", product: "Mini Pack", orders: 65, amount: 32500, date: "2026-05-12", channel: "Store", createdAt: "2026-05-12" }
+  { id: "r1", userId: "demo", product: "Signature Box", orders: 42, amount: 54600, date: "2026-05-03", channel: "WhatsApp", createdAt: "2026-05-03", source: "manual" },
+  { id: "r2", userId: "demo", product: "Premium Hamper", orders: 18, amount: 46800, date: "2026-05-08", channel: "Website", createdAt: "2026-05-08", source: "website" },
+  { id: "r3", userId: "demo", product: "Mini Pack", orders: 65, amount: 32500, date: "2026-05-12", channel: "Store", createdAt: "2026-05-12", source: "manual" }
 ];
 
 export const sampleInventory: InventoryItem[] = [
-  { id: "i1", userId: "demo", name: "Chocolate base", quantity: 8, unit: "kg", lowStockThreshold: 10, restockStatus: "Restock", updatedAt: "2026-05-14" },
-  { id: "i2", userId: "demo", name: "Gift boxes", quantity: 120, unit: "pcs", lowStockThreshold: 50, restockStatus: "Healthy", updatedAt: "2026-05-12" },
-  { id: "i3", userId: "demo", name: "Ribbons", quantity: 32, unit: "rolls", lowStockThreshold: 30, restockStatus: "Watch", updatedAt: "2026-05-11" }
+  { id: "i1", userId: "demo", name: "Cheese", quantity: 8, unit: "kg", lowStockThreshold: 10, restockStatus: "Restock", updatedAt: "2026-05-14", unitCost: 420, supplier: "Fresh Dairy" },
+  { id: "i2", userId: "demo", name: "Pizza Boxes", quantity: 120, unit: "pcs", lowStockThreshold: 50, restockStatus: "Healthy", updatedAt: "2026-05-12", unitCost: 14, supplier: "PackPro" },
+  { id: "i3", userId: "demo", name: "Paneer", quantity: 12, unit: "kg", lowStockThreshold: 15, restockStatus: "Watch", updatedAt: "2026-05-11", unitCost: 360, supplier: "Fresh Dairy" },
+  { id: "i4", userId: "demo", name: "Carry Bags", quantity: 35, unit: "pcs", lowStockThreshold: 40, restockStatus: "Watch", updatedAt: "2026-05-10", unitCost: 5, supplier: "PackPro" }
 ];
 
 export const sampleBudgets: Budget[] = [

@@ -7,19 +7,19 @@ import { useBusinessData } from "@/hooks/use-business-data";
 import { currency } from "@/lib/utils";
 import type { Expense, Revenue } from "@/types";
 
-function exportCsv(rows: Array<Record<string, string | number>>) {
+function exportCsv(rows: Array<Record<string, unknown>>, filename: string) {
   const headers = Object.keys(rows[0] || {});
   const csv = [headers.join(","), ...rows.map((row) => headers.map((header) => JSON.stringify(row[header] ?? "")).join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "magneetoz-expenses.csv";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function printReport(expenses: Expense[], revenues: Revenue[]) {
+function printReport(expenses: Expense[], revenues: Revenue[], title = "MAGNEETOZ Business OS Report") {
   const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
   const totalRevenue = revenues.reduce((sum, item) => sum + item.amount, 0);
   const rows = expenses
@@ -51,8 +51,8 @@ function printReport(expenses: Expense[], revenues: Revenue[]) {
         </style>
       </head>
       <body>
-        <h1>MAGNEETOZ Business OS Report</h1>
-        <p>Monthly expense summary and profit/loss report</p>
+        <h1>${title}</h1>
+        <p>Revenue, expense, tax, and profit/loss report</p>
         <div class="metrics">
           <div class="metric"><span>Revenue</span><strong>${currency(totalRevenue)}</strong></div>
           <div class="metric"><span>Expenses</span><strong>${currency(totalExpenses)}</strong></div>
@@ -72,6 +72,7 @@ function printReport(expenses: Expense[], revenues: Revenue[]) {
 
 export default function ReportsPage() {
   const { expenses, revenues, metrics } = useBusinessData();
+  const taxRows = revenues.map((item) => ({ date: item.date, source: item.source || "manual", amount: item.amount, estimatedGst: Math.round(item.amount * 0.05) }));
 
   return (
     <div className="space-y-6">
@@ -81,15 +82,31 @@ export default function ReportsPage() {
         <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Profit/Loss</p><p className="mt-2 text-2xl font-semibold">{currency(metrics.netProfit)}</p></CardContent></Card>
       </div>
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />Monthly reports</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />Downloadable reports</CardTitle></CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          <Button onClick={() => printReport(expenses, revenues)}>
+          <Button onClick={() => printReport(expenses, revenues, "MAGNEETOZ Daily Report")}>
             <Printer className="h-4 w-4" />
-            Print / Save PDF
+            Daily PDF
           </Button>
-          <Button variant="outline" onClick={() => exportCsv(expenses.map(({ id, userId, ...expense }) => expense))}>
+          <Button onClick={() => printReport(expenses, revenues, "MAGNEETOZ Weekly Report")}>
+            <Printer className="h-4 w-4" />
+            Weekly PDF
+          </Button>
+          <Button onClick={() => printReport(expenses, revenues, "MAGNEETOZ Monthly Report")}>
+            <Printer className="h-4 w-4" />
+            Monthly PDF
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(expenses.map(({ id, userId, ...expense }) => expense), "magneetoz-expense-report.csv")}>
             <Download className="h-4 w-4" />
-            Export CSV
+            Expense CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(revenues.map(({ id, userId, ...revenue }) => revenue), "magneetoz-profit-loss.csv")}>
+            <Download className="h-4 w-4" />
+            P&L CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(taxRows, "magneetoz-tax-summary.csv")}>
+            <Download className="h-4 w-4" />
+            Tax CSV
           </Button>
         </CardContent>
       </Card>
