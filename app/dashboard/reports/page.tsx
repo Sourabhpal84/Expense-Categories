@@ -1,8 +1,11 @@
 "use client";
 
 import { Download, FileText, Printer } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useBusinessData } from "@/hooks/use-business-data";
 import { currency } from "@/lib/utils";
 import type { Expense, Revenue } from "@/types";
@@ -22,10 +25,16 @@ function exportCsv(rows: Array<Record<string, unknown>>, filename: string) {
 function printReport(expenses: Expense[], revenues: Revenue[], title = "MAGNEETOZ Business OS Report") {
   const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
   const totalRevenue = revenues.reduce((sum, item) => sum + item.amount, 0);
-  const rows = expenses
+  const expenseRows = expenses
     .map(
       (item) =>
-        `<tr><td>${item.date}</td><td>${item.vendor}</td><td>${item.category}</td><td style="text-align:right">${currency(item.amount)}</td></tr>`
+        `<tr><td>${item.date}</td><td>${item.vendor}</td><td>${item.category}</td><td>${item.notes || ""}</td><td style="text-align:right">${currency(item.amount)}</td></tr>`
+    )
+    .join("");
+  const revenueRows = revenues
+    .map(
+      (item) =>
+        `<tr><td>${item.date}</td><td>${item.revenueSource || item.channel}</td><td>${item.revenueType || "Food Sales"}</td><td>${item.paymentMethod || ""}</td><td>${item.notes || item.product}</td><td style="text-align:right">${currency(item.amount)}</td></tr>`
     )
     .join("");
 
@@ -58,10 +67,15 @@ function printReport(expenses: Expense[], revenues: Revenue[], title = "MAGNEETO
           <div class="metric"><span>Expenses</span><strong>${currency(totalExpenses)}</strong></div>
           <div class="metric"><span>Profit/Loss</span><strong>${currency(totalRevenue - totalExpenses)}</strong></div>
         </div>
+        <h2>Revenue Detail</h2>
+        <table>
+          <thead><tr><th>Date</th><th>Revenue Source</th><th>Revenue Type</th><th>Payment Method</th><th>Description/Notes</th><th style="text-align:right">Amount</th></tr></thead>
+          <tbody>${revenueRows || `<tr><td colspan="6">No revenue found for this period.</td></tr>`}</tbody>
+        </table>
         <h2>Expense Summary</h2>
         <table>
-          <thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
-          <tbody>${rows}</tbody>
+          <thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th>Notes</th><th style="text-align:right">Amount</th></tr></thead>
+          <tbody>${expenseRows || `<tr><td colspan="5">No expenses found for this period.</td></tr>`}</tbody>
         </table>
         <script>window.onload = () => window.print();</script>
       </body>
@@ -72,7 +86,20 @@ function printReport(expenses: Expense[], revenues: Revenue[], title = "MAGNEETO
 
 export default function ReportsPage() {
   const { expenses, revenues, metrics } = useBusinessData();
+  const [selectedDay, setSelectedDay] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const taxRows = revenues.map((item) => ({ date: item.date, source: item.source || "manual", amount: item.amount, estimatedGst: Math.round(item.amount * 0.05) }));
+  const dailyExpenses = expenses.filter((item) => item.date === selectedDay);
+  const dailyRevenues = revenues.filter((item) => item.date === selectedDay);
+  const monthlyExpenses = expenses.filter((item) => item.date.startsWith(selectedMonth));
+  const monthlyRevenues = revenues.filter((item) => item.date.startsWith(selectedMonth));
+  const monthlyDetail = useMemo(() => Array.from(new Set([...revenues.map((item) => item.date.slice(0, 7)), ...expenses.map((item) => item.date.slice(0, 7))]))
+    .sort((a, b) => b.localeCompare(a))
+    .map((month) => {
+      const revenue = revenues.filter((item) => item.date.startsWith(month)).reduce((sum, item) => sum + item.amount, 0);
+      const expense = expenses.filter((item) => item.date.startsWith(month)).reduce((sum, item) => sum + item.amount, 0);
+      return { month, revenue, expense, profit: revenue - expense };
+    }), [expenses, revenues]);
 
   return (
     <div className="space-y-6">
@@ -83,7 +110,26 @@ export default function ReportsPage() {
       </div>
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />Downloadable reports</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
+        <CardContent className="grid gap-5">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-end">
+            <div className="space-y-2">
+              <Label>Particular day</Label>
+              <Input type="date" value={selectedDay} onChange={(event) => setSelectedDay(event.target.value)} />
+            </div>
+            <Button onClick={() => printReport(dailyExpenses, dailyRevenues, `MAGNEETOZ Daily Report - ${selectedDay}`)}>
+              <Printer className="h-4 w-4" />
+              Selected Day PDF
+            </Button>
+            <div className="space-y-2">
+              <Label>Particular month</Label>
+              <Input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} />
+            </div>
+            <Button onClick={() => printReport(monthlyExpenses, monthlyRevenues, `MAGNEETOZ Monthly Report - ${selectedMonth}`)}>
+              <Printer className="h-4 w-4" />
+              Selected Month PDF
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-3">
           <Button onClick={() => printReport(expenses, revenues, "MAGNEETOZ Daily Report")}>
             <Printer className="h-4 w-4" />
             Daily PDF
@@ -108,6 +154,16 @@ export default function ReportsPage() {
             <Download className="h-4 w-4" />
             Tax CSV
           </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Every month revenue, expense, and total</CardTitle></CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-sm">
+            <thead className="text-left text-muted-foreground"><tr className="border-b border-white/10"><th className="py-3">Month</th><th className="text-right">Revenue</th><th className="text-right">Expense</th><th className="text-right">Total Profit/Loss</th></tr></thead>
+            <tbody>{monthlyDetail.map((item) => <tr key={item.month} className="border-b border-white/5"><td className="py-3">{item.month}</td><td className="text-right font-medium">{currency(item.revenue)}</td><td className="text-right font-medium">{currency(item.expense)}</td><td className="text-right font-semibold">{currency(item.profit)}</td></tr>)}</tbody>
+          </table>
         </CardContent>
       </Card>
       <Card>

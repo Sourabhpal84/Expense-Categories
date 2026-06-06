@@ -1,29 +1,87 @@
 export type ExpenseCategory =
   | "Ingredients"
+  | "Cheese & Dairy"
+  | "Vegetables"
+  | "Meat & Seafood"
+  | "Sauces & Spices"
+  | "Dough & Bakery"
+  | "Beverages"
   | "Packaging"
+  | "Pizza Boxes"
+  | "Disposable Cutlery"
   | "Delivery"
+  | "Fuel"
+  | "Kitchen Equipment"
+  | "Repairs & Maintenance"
+  | "Cleaning & Hygiene"
+  | "Licenses & Permits"
   | "Marketing"
+  | "Discounts & Promotions"
   | "Salary"
+  | "Staff Meals"
+  | "Training"
   | "Rent"
   | "Utilities"
+  | "Electricity"
+  | "Water"
+  | "Internet & Phone"
   | "Software"
+  | "Accounting & Legal"
+  | "Bank Charges"
   | "Vehicle Maintenance"
   | "Payment Gateway"
   | "Payment Gateway Charges"
+  | "Marketplace Commission"
+  | "Taxes & GST"
+  | "Insurance"
+  | "Furniture & Fixtures"
+  | "Uniforms"
+  | "Wastage & Spoilage"
+  | "Refunds"
+  | "Office Supplies"
   | "Misc";
 
 export const expenseCategories: ExpenseCategory[] = [
   "Ingredients",
+  "Cheese & Dairy",
+  "Vegetables",
+  "Meat & Seafood",
+  "Sauces & Spices",
+  "Dough & Bakery",
+  "Beverages",
   "Packaging",
+  "Pizza Boxes",
+  "Disposable Cutlery",
   "Delivery",
+  "Fuel",
+  "Kitchen Equipment",
+  "Repairs & Maintenance",
+  "Cleaning & Hygiene",
+  "Licenses & Permits",
   "Marketing",
+  "Discounts & Promotions",
   "Salary",
+  "Staff Meals",
+  "Training",
   "Rent",
   "Utilities",
+  "Electricity",
+  "Water",
+  "Internet & Phone",
   "Software",
+  "Accounting & Legal",
+  "Bank Charges",
   "Vehicle Maintenance",
   "Payment Gateway",
   "Payment Gateway Charges",
+  "Marketplace Commission",
+  "Taxes & GST",
+  "Insurance",
+  "Furniture & Fixtures",
+  "Uniforms",
+  "Wastage & Spoilage",
+  "Refunds",
+  "Office Supplies",
   "Misc"
 ];
 
@@ -49,9 +107,11 @@ export type Revenue = {
   orders: number;
   amount: number;
   date: string;
-  channel: "Store" | "WhatsApp" | "Marketplace" | "Website" | "Other";
+  channel: "Store" | "Dine-in" | "Takeaway" | "WhatsApp" | "Phone" | "Marketplace" | "Website" | "Catering" | "Other";
   createdAt: string;
   source?: "manual" | "website";
+  revenueSource?: string;
+  revenueType?: "Food Sales" | "Delivery Fee" | "Catering" | "Party Order" | "Subscription" | "Commission" | "Refund Reversal" | "Other";
   paymentStatus?: string;
   paymentMethod?: string;
   orderStatus?: string;
