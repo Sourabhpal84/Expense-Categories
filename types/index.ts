@@ -100,6 +100,57 @@ export type Expense = {
   updatedBy?: string;
 };
 
+export type PersonalExpenseCategory =
+  | "Room Rent"
+  | "Electricity"
+  | "Water"
+  | "Internet"
+  | "Groceries"
+  | "Food"
+  | "Travel"
+  | "Medical"
+  | "Mobile Recharge"
+  | "Laundry"
+  | "Room Maintenance"
+  | "Personal Shopping"
+  | "Family"
+  | "Savings"
+  | "Loan/EMI"
+  | "Other";
+
+export const personalExpenseCategories: PersonalExpenseCategory[] = [
+  "Room Rent",
+  "Electricity",
+  "Water",
+  "Internet",
+  "Groceries",
+  "Food",
+  "Travel",
+  "Medical",
+  "Mobile Recharge",
+  "Laundry",
+  "Room Maintenance",
+  "Personal Shopping",
+  "Family",
+  "Savings",
+  "Loan/EMI",
+  "Other"
+];
+
+export type PersonalExpense = {
+  id: string;
+  userId: string;
+  title: string;
+  amount: number;
+  category: PersonalExpenseCategory;
+  date: string;
+  paidBy?: string;
+  paymentMethod?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Revenue = {
   id: string;
   userId: string;

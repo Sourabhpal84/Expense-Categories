@@ -39,6 +39,12 @@ service cloud.firestore {
       allow update, delete: if owns(resource.data.userId);
     }
 
+    match /personalExpenses/{documentId} {
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
+      allow update, delete: if owns(resource.data.userId);
+    }
+
     match /auditLogs/{documentId} {
       allow read, create: if signedIn();
       allow update, delete: if false;

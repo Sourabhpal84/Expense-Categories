@@ -32,6 +32,8 @@ export default function ExpensesPage() {
 
   async function remove(id: string) {
     if (demoMode) return toast({ title: "Demo mode", description: "Sign in with Firebase to delete records." });
+    if (!confirm("Delete this business expense?")) return;
+    if (!confirm("Final confirmation: this expense cannot be recovered.")) return;
     await deleteExpense(id);
     toast({ title: "Expense deleted" });
   }

@@ -83,6 +83,7 @@ export default function RevenuePage() {
   async function remove(item: Revenue) {
     if (item.source === "website") return toast({ title: "Website revenue is order-linked", description: "Update the source order instead of deleting the synced row." });
     if (!confirm("Permanently delete this revenue entry? Dashboard, chart, and profit totals will refresh automatically.")) return;
+    if (!confirm("Final confirmation: this revenue entry cannot be recovered.")) return;
     await deleteRevenue(item.id);
     toast({ title: "Revenue deleted" });
   }

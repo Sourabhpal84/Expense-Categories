@@ -30,6 +30,8 @@ export default function InventoryPage() {
 
   async function removeItem(id: string) {
     if (demoMode) return toast({ title: "Demo mode", description: "Connect Firebase to delete inventory." });
+    if (!confirm("Delete this inventory item?")) return;
+    if (!confirm("Final confirmation: this inventory item cannot be recovered.")) return;
     await deleteInventoryItem(id);
     toast({ title: "Inventory item deleted" });
   }

@@ -10,7 +10,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
-import type { Budget, Expense, InventoryItem, Revenue } from "@/types";
+import type { Budget, Expense, InventoryItem, PersonalExpense, Revenue } from "@/types";
 
 const nowIso = () => new Date().toISOString();
 
@@ -120,6 +120,30 @@ export async function deleteInventoryItem(id: string) {
   const database = requireDb();
   await deleteDoc(doc(database, "inventory", id));
   await addAuditLog("delete", "inventory", { id });
+}
+
+export async function addPersonalExpense(input: Omit<PersonalExpense, "id" | "createdAt" | "updatedAt">) {
+  const database = requireDb();
+  const saved = await addDoc(collection(database, "personalExpenses"), removeUndefinedFields({
+    ...input,
+    amount: Number(input.amount),
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    createdServerAt: serverTimestamp()
+  }));
+  await addAuditLog("create", "personalExpenses", { id: saved.id, amount: input.amount, category: input.category, userId: input.userId });
+}
+
+export async function updatePersonalExpense(id: string, input: Partial<PersonalExpense>) {
+  const database = requireDb();
+  await updateDoc(doc(database, "personalExpenses", id), removeUndefinedFields({ ...input, updatedAt: nowIso() }));
+  await addAuditLog("update", "personalExpenses", { id, ...input });
+}
+
+export async function deletePersonalExpense(id: string) {
+  const database = requireDb();
+  await deleteDoc(doc(database, "personalExpenses", id));
+  await addAuditLog("delete", "personalExpenses", { id });
 }
 
 export async function addBudget(input: Omit<Budget, "id" | "spent">) {
