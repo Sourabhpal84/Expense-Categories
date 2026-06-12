@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Bell, Boxes, Brain, CircleDollarSign, Home, LayoutDashboard, LogOut, MessageSquare, PieChart, ReceiptText, Settings, Users, WalletCards } from "lucide-react";
+import { BarChart3, Bell, Boxes, Brain, CircleDollarSign, Home, LayoutDashboard, LogOut, MessageSquare, PieChart, ReceiptText, Settings, Users, WalletCards, X } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,13 +22,18 @@ const nav = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings }
 ];
 
-export function Sidebar() {
+type SidebarProps = {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+};
+
+export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout } = useAuth();
 
-  return (
-    <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-72 flex-col rounded-none border-l-0 border-y-0 p-4 lg:flex">
+  const content = (
+    <>
       <Link href="/dashboard" className="mb-8 flex items-center gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-primary-foreground">
           <BarChart3 className="h-5 w-5" />
@@ -46,6 +51,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onMobileClose}
               className={cn("flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-muted-foreground transition hover:bg-white/10 hover:text-foreground", active && "bg-white/10 text-foreground")}
             >
               <Icon className="h-4 w-4" />
@@ -59,12 +65,32 @@ export function Sidebar() {
         className="justify-start"
         onClick={async () => {
           await logout();
+          onMobileClose?.();
           router.push("/login");
         }}
       >
         <LogOut className="h-4 w-4" />
         Logout
       </Button>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-72 flex-col rounded-none border-l-0 border-y-0 p-4 lg:flex">
+        {content}
+      </aside>
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button className="absolute inset-0 bg-black/70" aria-label="Close menu" onClick={onMobileClose} />
+          <aside className="glass relative z-10 flex h-full w-72 max-w-[82vw] flex-col rounded-none border-l-0 border-y-0 p-4 shadow-2xl">
+            <Button className="absolute right-3 top-3" size="icon" variant="ghost" aria-label="Close menu" onClick={onMobileClose}>
+              <X className="h-5 w-5" />
+            </Button>
+            {content}
+          </aside>
+        </div>
+      ) : null}
+    </>
   );
 }

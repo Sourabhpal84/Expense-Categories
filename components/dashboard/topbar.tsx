@@ -6,7 +6,11 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { Button } from "@/components/ui/button";
 
-export function Topbar() {
+type TopbarProps = {
+  onMenuClick?: () => void;
+};
+
+export function Topbar({ onMenuClick }: TopbarProps) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
@@ -14,7 +18,7 @@ export function Topbar() {
     <header className="sticky top-0 z-30 border-b border-white/10 bg-background/70 px-4 py-3 backdrop-blur-xl lg:px-8">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button className="lg:hidden" size="icon" variant="ghost" aria-label="Open menu">
+          <Button className="lg:hidden" size="icon" variant="ghost" aria-label="Open menu" onClick={onMenuClick}>
             <Menu className="h-5 w-5" />
           </Button>
           <div>
