@@ -29,6 +29,20 @@ function numberValue(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function withoutUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => withoutUndefined(entry)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, withoutUndefined(entry)])
+    ) as T;
+  }
+  return value;
+}
+
 function variantsFromDish(data: Record<string, unknown>): RestaurantMenuVariant[] {
   const candidates = data.sizes || data.variants || data.prices;
   if (Array.isArray(candidates)) {
@@ -143,13 +157,13 @@ export async function createRestaurantOrder(input: Omit<RestaurantOrder, "id" | 
     const orderNumber = `M${String(next).padStart(3, "0")}`;
     const timestamp = nowIso();
     transaction.set(counterRef, { value: next, userId: input.userId, updatedAt: timestamp }, { merge: true });
-    transaction.set(orderRef, {
+    transaction.set(orderRef, withoutUndefined({
       ...input,
       orderNumber,
       createdAt: timestamp,
       updatedAt: timestamp,
       createdServerAt: serverTimestamp()
-    });
+    }));
     return { id: orderRef.id, orderNumber };
   });
 }
