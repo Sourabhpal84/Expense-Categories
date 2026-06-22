@@ -93,6 +93,7 @@ export default function RestaurantOperationsPage() {
   const [saving, setSaving] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RestaurantOrder | null>(null);
   const [menuSearch, setMenuSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [cart, setCart] = useState<RestaurantOrderItem[]>([]);
   const [offerCode, setOfferCode] = useState<RestaurantOfferCode>("NONE");
   const [form, setForm] = useState({
@@ -112,8 +113,14 @@ export default function RestaurantOperationsPage() {
 
   const filteredMenu = useMemo(() => {
     const search = menuSearch.toLowerCase().trim();
-    return menu.filter((item) => `${item.name} ${item.categoryName}`.toLowerCase().includes(search));
-  }, [menu, menuSearch]);
+    return menu.filter((item) => {
+      const categoryMatch = selectedCategory === "all" || item.categoryName === selectedCategory;
+      const searchMatch = !search || `${item.name} ${item.categoryName}`.toLowerCase().includes(search);
+      return categoryMatch && searchMatch;
+    });
+  }, [menu, menuSearch, selectedCategory]);
+
+  const menuCategories = useMemo(() => Array.from(new Set(menu.map((item) => item.categoryName || "Other"))).sort((a, b) => a.localeCompare(b)), [menu]);
 
   const subTotal = useMemo(() => cart.reduce((sum, item) => sum + item.lineTotal, 0), [cart]);
   const discountAmount = useMemo(() => calculateOfferDiscount(cart, offerCode), [cart, offerCode]);
@@ -240,16 +247,32 @@ export default function RestaurantOperationsPage() {
         {section === "new" ? (
           <form className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]" onSubmit={submitOrder}>
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-primary" />Live menu</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-primary" />Create order from live menu</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} placeholder="Search pizzas, sides, categories..." /></div>
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
+                  Flow: choose category → choose item → choose size → apply offer if needed → send to kitchen.
+                </div>
+                <div className="space-y-2">
+                  <Label>1. Choose category</Label>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    <Button type="button" variant={selectedCategory === "all" ? "default" : "outline"} className="shrink-0" onClick={() => setSelectedCategory("all")}>All</Button>
+                    {menuCategories.map((category) => (
+                      <Button key={category} type="button" variant={selectedCategory === category ? "default" : "outline"} className="shrink-0" onClick={() => setSelectedCategory(category)}>{category}</Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>2. Choose item</Label>
+                  <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} placeholder="Search item in selected category..." /></div>
+                </div>
                 {loading ? <p className="py-10 text-center text-muted-foreground">Loading live menu...</p> : null}
-                {!loading && !filteredMenu.length ? <p className="py-10 text-center text-muted-foreground">No available menu items found in the dishes collection.</p> : null}
+                {!loading && !filteredMenu.length ? <p className="py-10 text-center text-muted-foreground">No items found for this category/search.</p> : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   {filteredMenu.map((item) => (
                     <div key={item.id} className="rounded-lg border border-white/10 bg-white/[.03] p-4">
                       <p className="font-medium">{item.name}</p>
                       <p className="mb-3 text-xs text-muted-foreground">{item.categoryName}</p>
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">3. Choose size</p>
                       <div className="flex flex-wrap gap-2">
                         {item.variants.map((variant, index) => <Button key={`${variant.name}-${index}`} type="button" size="sm" variant="outline" onClick={() => addMenuItem(item, index)}>{variant.name !== "Standard" ? `${variant.name} · ` : ""}{currency(variant.price)}</Button>)}
                       </div>
@@ -291,7 +314,7 @@ export default function RestaurantOperationsPage() {
                   <div className="space-y-2"><Label>Method</Label><Select value={form.paymentMethod} onValueChange={(value) => setForm({ ...form, paymentMethod: value as RestaurantPaymentMethod })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select></div>
                   <div className="space-y-2"><Label>Status</Label><Select value={form.paymentStatus} onValueChange={(value) => setForm({ ...form, paymentStatus: value as RestaurantPaymentStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem></SelectContent></Select></div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label>Offer</Label>
+                    <Label>4. Apply offer if needed</Label>
                     <Select value={offerCode} onValueChange={(value) => setOfferCode(value as RestaurantOfferCode)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -304,7 +327,7 @@ export default function RestaurantOperationsPage() {
                   </div>
                   {discountAmount > 0 ? <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm sm:col-span-2"><div className="flex justify-between"><span>Subtotal</span><span>{currency(subTotal)}</span></div><div className="flex justify-between text-emerald-300"><span>{offerLabels[offerCode]}</span><span>-{currency(discountAmount)}</span></div></div> : null}
                   <div className="flex items-center justify-between text-xl font-semibold sm:col-span-2"><span>Total</span><span>{currency(total)}</span></div>
-                  <Button className="sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Saving order..." : "Save Order & Generate KOT"}</Button>
+                  <Button className="sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Sending to kitchen..." : "Save Order & Send to Kitchen"}</Button>
                 </CardContent>
               </Card>
               {selectedOrder ? <Card className="border-primary/40"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="font-medium">{selectedOrder.orderNumber} is ready</p><p className="text-sm text-muted-foreground">Print the kitchen ticket or send it to the cook.</p></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></CardContent></Card> : null}
