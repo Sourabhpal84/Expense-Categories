@@ -62,6 +62,30 @@
   }
 }
 
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #kitchen-ticket,
+  #kitchen-ticket * {
+    visibility: visible !important;
+  }
+
+  #kitchen-ticket {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: white;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}
+
 @layer components {
   .glass {
     @apply border border-white/10 bg-white/[0.06] shadow-glow backdrop-blur-xl;

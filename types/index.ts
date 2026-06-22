@@ -258,3 +258,55 @@ export type NotificationItem = {
   severity: "info" | "warning" | "critical" | "success";
   createdAt: string;
 };
+
+export type RestaurantOrderStatus = "New Order" | "In Kitchen" | "Ready" | "Delivered" | "Cancelled";
+export type RestaurantOrderType = "Dine In" | "Takeaway";
+export type RestaurantPaymentMethod = "Cash" | "UPI";
+export type RestaurantPaymentStatus = "Paid" | "Unpaid";
+
+export type RestaurantMenuVariant = {
+  name: string;
+  price: number;
+};
+
+export type RestaurantMenuItem = {
+  id: string;
+  name: string;
+  categoryId?: string;
+  categoryName: string;
+  description?: string;
+  imageUrl?: string;
+  available: boolean;
+  variants: RestaurantMenuVariant[];
+};
+
+export type RestaurantOrderItem = {
+  menuItemId: string;
+  name: string;
+  categoryName?: string;
+  size?: string;
+  unitPrice: number;
+  quantity: number;
+  notes?: string;
+  lineTotal: number;
+};
+
+export type RestaurantOrder = {
+  id: string;
+  userId: string;
+  orderNumber: string;
+  customerName?: string;
+  mobileNumber?: string;
+  orderType: RestaurantOrderType;
+  tableNumber?: string;
+  items: RestaurantOrderItem[];
+  notes?: string;
+  paymentMethod: RestaurantPaymentMethod;
+  paymentStatus: RestaurantPaymentStatus;
+  totalAmount: number;
+  status: RestaurantOrderStatus;
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt?: string;
+  cancelledAt?: string;
+};
