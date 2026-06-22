@@ -242,7 +242,7 @@ export default function RestaurantOperationsPage() {
   }
 
   function sendToCook(order: RestaurantOrder) {
-    const url = `https://wa.me/918081680820?text=${encodeURIComponent(whatsappMessage(order))}`;
+    const url = `https://wa.me/919555173129?text=${encodeURIComponent(whatsappMessage(order))}`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
