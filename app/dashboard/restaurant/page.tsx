@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { ChefHat, Clock3, History, MessageCircle, Plus, Printer, Search, ShoppingCart, Trash2, TrendingUp } from "lucide-react";
+import { ChefHat, Clock3, Download, History, MessageCircle, Plus, Printer, Search, ShoppingCart, Trash2, TrendingUp } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { KitchenTicket } from "@/components/restaurant/kitchen-ticket";
 import { Button } from "@/components/ui/button";
@@ -110,6 +110,7 @@ export default function RestaurantOperationsPage() {
   const [historyStatus, setHistoryStatus] = useState("all");
   const [historyPayment, setHistoryPayment] = useState("all");
   const [historyType, setHistoryType] = useState("all");
+  const [summaryDate, setSummaryDate] = useState(localDate(new Date().toISOString()));
 
   const filteredMenu = useMemo(() => {
     const search = menuSearch.toLowerCase().trim();
@@ -136,17 +137,45 @@ export default function RestaurantOperationsPage() {
       && (historyType === "all" || order.orderType === historyType);
   }), [historyDate, historyPayment, historySearch, historyStatus, historyType, orders]);
 
-  const todayOrders = orders.filter((order) => localDate(order.createdAt) === localDate(new Date().toISOString()));
-  const deliveredToday = todayOrders.filter((order) => order.status === "Delivered");
+  const summaryOrders = orders.filter((order) => localDate(order.createdAt) === summaryDate);
+  const deliveredSummaryOrders = summaryOrders.filter((order) => order.status === "Delivered");
   const summary = {
-    totalOrders: todayOrders.length,
-    revenue: deliveredToday.reduce((sum, order) => sum + order.totalAmount, 0),
-    cash: deliveredToday.filter((order) => order.paymentMethod === "Cash").reduce((sum, order) => sum + order.totalAmount, 0),
-    upi: deliveredToday.filter((order) => order.paymentMethod === "UPI").reduce((sum, order) => sum + order.totalAmount, 0),
-    delivered: deliveredToday.length,
-    cancelled: todayOrders.filter((order) => order.status === "Cancelled").length,
-    pending: todayOrders.filter((order) => activeStatuses.includes(order.status)).length
+    totalOrders: summaryOrders.length,
+    revenue: deliveredSummaryOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+    cash: deliveredSummaryOrders.filter((order) => order.paymentMethod === "Cash").reduce((sum, order) => sum + order.totalAmount, 0),
+    upi: deliveredSummaryOrders.filter((order) => order.paymentMethod === "UPI").reduce((sum, order) => sum + order.totalAmount, 0),
+    delivered: deliveredSummaryOrders.length,
+    cancelled: summaryOrders.filter((order) => order.status === "Cancelled").length,
+    pending: summaryOrders.filter((order) => activeStatuses.includes(order.status)).length,
+    discount: summaryOrders.reduce((sum, order) => sum + (order.discountAmount || 0), 0),
+    itemsSold: summaryOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0)
   };
+
+  const itemSales = useMemo(() => {
+    const map = new Map<string, { name: string; categoryName: string; quantity: number; revenue: number; orders: Set<string> }>();
+    summaryOrders.forEach((order) => {
+      order.items.forEach((item) => {
+        const key = `${item.name}__${item.size || "Standard"}`;
+        const row = map.get(key) || { name: `${item.name}${item.size && item.size !== "Standard" ? ` (${item.size})` : ""}`, categoryName: item.categoryName || "Other", quantity: 0, revenue: 0, orders: new Set<string>() };
+        row.quantity += item.quantity;
+        row.revenue += item.lineTotal;
+        row.orders.add(order.id);
+        map.set(key, row);
+      });
+    });
+    return Array.from(map.values()).map((row) => ({ ...row, orderCount: row.orders.size })).sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue);
+  }, [summaryOrders]);
+
+  const categorySales = useMemo(() => {
+    const map = new Map<string, { categoryName: string; quantity: number; revenue: number }>();
+    itemSales.forEach((item) => {
+      const row = map.get(item.categoryName) || { categoryName: item.categoryName, quantity: 0, revenue: 0 };
+      row.quantity += item.quantity;
+      row.revenue += item.revenue;
+      map.set(item.categoryName, row);
+    });
+    return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue);
+  }, [itemSales]);
 
   function addMenuItem(item: RestaurantMenuItem, variantIndex: number) {
     const variant = item.variants[variantIndex] || item.variants[0];
@@ -222,6 +251,96 @@ export default function RestaurantOperationsPage() {
     setTimeout(() => window.print(), 50);
   }
 
+  async function downloadDailySummaryPdf() {
+    if (!summaryOrders.length) {
+      toast({ title: "No orders found", description: "Selected date ke liye koi order nahi hai." });
+      return;
+    }
+
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    let y = 42;
+
+    const money = (value: number) => `Rs. ${Math.round(value).toLocaleString("en-IN")}`;
+    const addPageIfNeeded = (height = 20) => {
+      if (y + height <= pageHeight - margin) return;
+      doc.addPage();
+      y = margin;
+    };
+    const line = (text: string, size = 10, style: "normal" | "bold" = "normal", gap = 16) => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(size);
+      const wrapped = doc.splitTextToSize(text, pageWidth - margin * 2);
+      wrapped.forEach((part: string) => {
+        addPageIfNeeded(gap);
+        doc.text(part, margin, y);
+        y += gap;
+      });
+    };
+    const sectionTitle = (title: string) => {
+      y += 8;
+      addPageIfNeeded(28);
+      doc.setFillColor(230, 247, 252);
+      doc.rect(margin, y - 14, pageWidth - margin * 2, 22, "F");
+      line(title, 12, "bold", 20);
+    };
+    const row = (label: string, value: string | number) => line(`${label}: ${value}`, 10, "normal", 15);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("MAGNEETOZ - Restaurant Operations Report", margin, y);
+    y += 24;
+    line(`Date: ${summaryDate}`, 11, "bold");
+    line(`Generated: ${new Date().toLocaleString("en-IN")}`, 9);
+
+    sectionTitle("Business Summary");
+    row("Total orders", summary.totalOrders);
+    row("Delivered orders", summary.delivered);
+    row("Cancelled orders", summary.cancelled);
+    row("Pending orders", summary.pending);
+    row("Total items sold", summary.itemsSold);
+    row("Total revenue", money(summary.revenue));
+    row("Cash collection", money(summary.cash));
+    row("UPI collection", money(summary.upi));
+    row("Offer discounts", money(summary.discount));
+    row("Best selling dish", itemSales[0] ? `${itemSales[0].name} - ${itemSales[0].quantity} sold` : "No item sold");
+
+    sectionTitle("Top Selling Items / Dishes");
+    itemSales.slice(0, 20).forEach((item, index) => {
+      line(`${index + 1}. ${item.name} | Category: ${item.categoryName} | Qty: ${item.quantity} | Orders: ${item.orderCount} | Gross item value: ${money(item.revenue)}`, 9, index === 0 ? "bold" : "normal", 14);
+    });
+
+    sectionTitle("Category Wise Sales");
+    categorySales.forEach((category, index) => {
+      line(`${index + 1}. ${category.categoryName} | Qty: ${category.quantity} | Gross item value: ${money(category.revenue)}`, 9, "normal", 14);
+    });
+
+    sectionTitle("Payment and Status Breakup");
+    statuses.forEach((status) => row(status, summaryOrders.filter((order) => order.status === status).length));
+    row("Cash orders", summaryOrders.filter((order) => order.paymentMethod === "Cash").length);
+    row("UPI orders", summaryOrders.filter((order) => order.paymentMethod === "UPI").length);
+    row("Dine In orders", summaryOrders.filter((order) => order.orderType === "Dine In").length);
+    row("Takeaway orders", summaryOrders.filter((order) => order.orderType === "Takeaway").length);
+
+    sectionTitle("Order Wise Details");
+    summaryOrders
+      .slice()
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .forEach((order) => {
+        line(`${order.orderNumber} | ${localTime(order.createdAt)} | ${order.orderType}${order.tableNumber ? ` - ${order.tableNumber}` : ""} | ${order.status} | ${order.paymentMethod} ${order.paymentStatus} | Total: ${money(order.totalAmount)}`, 9, "bold", 14);
+        line(`Customer: ${order.customerName || "Walk-in"}${order.mobileNumber ? ` | Mobile: ${order.mobileNumber}` : ""}`, 8, "normal", 12);
+        order.items.forEach((item) => line(`   - ${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size})` : ""} @ ${money(item.unitPrice)}${item.notes ? ` | Note: ${item.notes}` : ""}`, 8, "normal", 12));
+        if (order.offerCode) line(`   Offer: ${order.offerLabel || order.offerCode} | Discount: ${money(order.discountAmount || 0)}`, 8, "normal", 12);
+        if (order.notes) line(`   Order notes: ${order.notes}`, 8, "normal", 12);
+        y += 4;
+      });
+
+    doc.save(`MAGNEETOZ-Restaurant-Report-${summaryDate}.pdf`);
+  }
+
   const tabs: Array<{ id: Section; label: string; icon: typeof Plus }> = [
     { id: "new", label: "New Order", icon: Plus },
     { id: "active", label: `Active Orders (${activeOrders.length})`, icon: ChefHat },
@@ -273,7 +392,7 @@ export default function RestaurantOperationsPage() {
                       <p className="font-medium">{item.name}</p>
                       <p className="mb-3 text-xs text-muted-foreground">{item.categoryName}</p>
                       <p className="mb-2 text-xs font-medium text-muted-foreground">3. Choose size</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                         {item.variants.map((variant, index) => <Button key={`${variant.name}-${index}`} type="button" size="sm" variant="outline" onClick={() => addMenuItem(item, index)}>{variant.name !== "Standard" ? `${variant.name} · ` : ""}{currency(variant.price)}</Button>)}
                       </div>
                     </div>
@@ -383,16 +502,60 @@ export default function RestaurantOperationsPage() {
         ) : null}
 
         {section === "summary" ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Total Orders", summary.totalOrders],
-              ["Total Revenue", currency(summary.revenue)],
-              ["Cash Collection", currency(summary.cash)],
-              ["UPI Collection", currency(summary.upi)],
-              ["Delivered Orders", summary.delivered],
-              ["Cancelled Orders", summary.cancelled],
-              ["Pending Orders", summary.pending]
-            ].map(([label, value]) => <Card key={label}><CardContent className="p-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold">{value}</p></CardContent></Card>)}
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div className="space-y-2">
+                  <Label>Select report date</Label>
+                  <Input type="date" value={summaryDate} onChange={(event) => setSummaryDate(event.target.value)} />
+                </div>
+                <Button type="button" className="h-11" onClick={downloadDailySummaryPdf} disabled={!summaryOrders.length}>
+                  <Download className="h-4 w-4" />Download PDF
+                </Button>
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["Total Orders", summary.totalOrders],
+                ["Total Revenue", currency(summary.revenue)],
+                ["Cash Collection", currency(summary.cash)],
+                ["UPI Collection", currency(summary.upi)],
+                ["Delivered Orders", summary.delivered],
+                ["Cancelled Orders", summary.cancelled],
+                ["Pending Orders", summary.pending],
+                ["Items Sold", summary.itemsSold],
+                ["Offer Discounts", currency(summary.discount)],
+                ["Top Dish", itemSales[0] ? `${itemSales[0].name} (${itemSales[0].quantity})` : "No sales"]
+              ].map(([label, value]) => <Card key={label}><CardContent className="p-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold sm:text-3xl">{value}</p></CardContent></Card>)}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card>
+                <CardHeader><CardTitle>Top selling dishes</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {!itemSales.length ? <p className="text-sm text-muted-foreground">No item sales for selected date.</p> : null}
+                  {itemSales.slice(0, 8).map((item, index) => (
+                    <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 p-3 text-sm">
+                      <div><p className="font-medium">{index + 1}. {item.name}</p><p className="text-xs text-muted-foreground">{item.categoryName} · {item.orderCount} orders</p></div>
+                      <div className="text-right"><p className="font-semibold">{item.quantity} sold</p><p className="text-xs text-muted-foreground">{currency(item.revenue)}</p></div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Category performance</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {!categorySales.length ? <p className="text-sm text-muted-foreground">No category sales for selected date.</p> : null}
+                  {categorySales.slice(0, 8).map((category) => (
+                    <div key={category.categoryName} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 p-3 text-sm">
+                      <p className="font-medium">{category.categoryName}</p>
+                      <div className="text-right"><p className="font-semibold">{category.quantity} sold</p><p className="text-xs text-muted-foreground">{currency(category.revenue)}</p></div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         ) : null}
       </div>
