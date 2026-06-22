@@ -15,6 +15,7 @@ import { useRestaurantOperations } from "@/hooks/use-restaurant-operations";
 import { createRestaurantOrder, updateRestaurantOrderStatus } from "@/services/restaurant-operations-service";
 import type {
   RestaurantMenuItem,
+  RestaurantOfferCode,
   RestaurantOrder,
   RestaurantOrderItem,
   RestaurantOrderStatus,
@@ -28,6 +29,11 @@ const activeStatuses: RestaurantOrderStatus[] = ["New Order", "In Kitchen", "Rea
 const currency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 const localDate = (value: string) => new Date(value).toLocaleDateString("en-CA");
 const localTime = (value: string) => new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+const offerLabels: Record<RestaurantOfferCode, string> = {
+  NONE: "No offer",
+  OBGO: "OBGO - Buy 1 Get 1 Free",
+  TBGO: "TBGO - Buy 2 Get 1 Free"
+};
 
 type Section = "new" | "active" | "history" | "summary";
 
@@ -57,12 +63,26 @@ function whatsappMessage(order: RestaurantOrder) {
     "",
     "Payment:",
     order.paymentMethod,
+    ...(order.offerCode && order.offerCode !== "NONE" ? ["", "Offer:", `${order.offerLabel || order.offerCode} (-${currency(order.discountAmount || 0)})`] : []),
     "",
     "Total:",
     currency(order.totalAmount),
     "",
     "Please prepare this order."
   ].join("\n");
+}
+
+function calculateOfferDiscount(items: RestaurantOrderItem[], offerCode: RestaurantOfferCode) {
+  const unitPrices = items.flatMap((item) => Array.from({ length: Math.max(0, item.quantity) }, () => item.unitPrice)).sort((a, b) => a - b);
+  if (offerCode === "OBGO") {
+    const freeCount = Math.floor(unitPrices.length / 2);
+    return unitPrices.slice(0, freeCount).reduce((sum, price) => sum + price, 0);
+  }
+  if (offerCode === "TBGO") {
+    const freeCount = Math.floor(unitPrices.length / 3);
+    return unitPrices.slice(0, freeCount).reduce((sum, price) => sum + price, 0);
+  }
+  return 0;
 }
 
 export default function RestaurantOperationsPage() {
@@ -74,6 +94,7 @@ export default function RestaurantOperationsPage() {
   const [selectedOrder, setSelectedOrder] = useState<RestaurantOrder | null>(null);
   const [menuSearch, setMenuSearch] = useState("");
   const [cart, setCart] = useState<RestaurantOrderItem[]>([]);
+  const [offerCode, setOfferCode] = useState<RestaurantOfferCode>("NONE");
   const [form, setForm] = useState({
     customerName: "",
     mobileNumber: "",
@@ -94,7 +115,9 @@ export default function RestaurantOperationsPage() {
     return menu.filter((item) => `${item.name} ${item.categoryName}`.toLowerCase().includes(search));
   }, [menu, menuSearch]);
 
-  const total = useMemo(() => cart.reduce((sum, item) => sum + item.lineTotal, 0), [cart]);
+  const subTotal = useMemo(() => cart.reduce((sum, item) => sum + item.lineTotal, 0), [cart]);
+  const discountAmount = useMemo(() => calculateOfferDiscount(cart, offerCode), [cart, offerCode]);
+  const total = Math.max(0, subTotal - discountAmount);
   const activeOrders = orders.filter((order) => activeStatuses.includes(order.status));
   const historyOrders = useMemo(() => orders.filter((order) => {
     const search = historySearch.toLowerCase().trim();
@@ -151,14 +174,19 @@ export default function RestaurantOperationsPage() {
         tableNumber: form.orderType === "Dine In" ? form.tableNumber.trim() : undefined,
         items: cart,
         notes: form.notes.trim() || undefined,
+        offerCode: offerCode === "NONE" ? undefined : offerCode,
+        offerLabel: offerCode === "NONE" ? undefined : offerLabels[offerCode],
+        discountAmount: discountAmount || undefined,
+        subTotal,
         paymentMethod: form.paymentMethod,
         paymentStatus: form.paymentStatus,
         totalAmount: total,
         status: "New Order"
       });
-      const printableOrder: RestaurantOrder = { id: result.id, orderNumber: result.orderNumber, userId: user.uid, ...form, tableNumber: form.orderType === "Dine In" ? form.tableNumber : undefined, items: cart, totalAmount: total, status: "New Order", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const printableOrder: RestaurantOrder = { id: result.id, orderNumber: result.orderNumber, userId: user.uid, ...form, tableNumber: form.orderType === "Dine In" ? form.tableNumber : undefined, items: cart, offerCode: offerCode === "NONE" ? undefined : offerCode, offerLabel: offerCode === "NONE" ? undefined : offerLabels[offerCode], discountAmount: discountAmount || undefined, subTotal, totalAmount: total, status: "New Order", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       setSelectedOrder(printableOrder);
       setCart([]);
+      setOfferCode("NONE");
       setForm({ customerName: "", mobileNumber: "", orderType: "Takeaway", tableNumber: "", paymentMethod: "Cash", paymentStatus: "Unpaid", notes: "" });
       toast({ title: `${result.orderNumber} created`, description: "Kitchen ticket is ready to print." });
     } catch (value) {
@@ -262,6 +290,19 @@ export default function RestaurantOperationsPage() {
                 <CardContent className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Method</Label><Select value={form.paymentMethod} onValueChange={(value) => setForm({ ...form, paymentMethod: value as RestaurantPaymentMethod })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select></div>
                   <div className="space-y-2"><Label>Status</Label><Select value={form.paymentStatus} onValueChange={(value) => setForm({ ...form, paymentStatus: value as RestaurantPaymentStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Offer</Label>
+                    <Select value={offerCode} onValueChange={(value) => setOfferCode(value as RestaurantOfferCode)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">No offer</SelectItem>
+                        <SelectItem value="OBGO">OBGO - Buy 1 Get 1 Free</SelectItem>
+                        <SelectItem value="TBGO">TBGO - Buy 2 Get 1 Free</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {offerCode !== "NONE" ? <p className="text-xs text-muted-foreground">Free item discount is applied on the lowest priced eligible item.</p> : null}
+                  </div>
+                  {discountAmount > 0 ? <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm sm:col-span-2"><div className="flex justify-between"><span>Subtotal</span><span>{currency(subTotal)}</span></div><div className="flex justify-between text-emerald-300"><span>{offerLabels[offerCode]}</span><span>-{currency(discountAmount)}</span></div></div> : null}
                   <div className="flex items-center justify-between text-xl font-semibold sm:col-span-2"><span>Total</span><span>{currency(total)}</span></div>
                   <Button className="sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Saving order..." : "Save Order & Generate KOT"}</Button>
                 </CardContent>
@@ -279,6 +320,7 @@ export default function RestaurantOperationsPage() {
                 <CardContent className="space-y-4 p-5">
                   <div className="flex items-start justify-between"><div><p className="text-xl font-semibold">{order.orderNumber}</p><p className="text-sm text-muted-foreground">{order.customerName || "Walk-in customer"} · {order.orderType}{order.tableNumber ? ` · ${order.tableNumber}` : ""}</p></div><span className={`rounded-full px-2.5 py-1 text-xs ${statusClass(order.status)}`}>{order.status}</span></div>
                   <div className="space-y-1 text-sm">{order.items.map((item, index) => <p key={index}>{item.quantity} × {item.name}{item.size !== "Standard" ? ` (${item.size})` : ""}</p>)}</div>
+                  {order.offerCode ? <p className="text-sm text-emerald-300">{order.offerLabel || order.offerCode}: -{currency(order.discountAmount || 0)}</p> : null}
                   <div className="flex justify-between border-t border-white/10 pt-3 text-sm"><span>{order.paymentMethod} · {order.paymentStatus}</span><strong>{currency(order.totalAmount)}</strong></div>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{localTime(order.createdAt)}</p>
                   <div className="flex flex-wrap gap-2">
@@ -310,7 +352,7 @@ export default function RestaurantOperationsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[850px] text-sm">
                   <thead className="text-left text-muted-foreground"><tr className="border-b border-white/10"><th className="py-3">Order</th><th>Customer</th><th>Type</th><th>Payment</th><th>Status</th><th>Time</th><th className="text-right">Total</th><th className="text-right">Actions</th></tr></thead>
-                  <tbody>{historyOrders.map((order) => <tr key={order.id} className="border-b border-white/5"><td className="py-3 font-medium">{order.orderNumber}</td><td>{order.customerName || "Walk-in"}<br /><span className="text-xs text-muted-foreground">{order.mobileNumber || ""}</span></td><td>{order.orderType}</td><td>{order.paymentMethod} · {order.paymentStatus}</td><td><span className={`rounded-full px-2 py-1 text-xs ${statusClass(order.status)}`}>{order.status}</span></td><td>{localDate(order.createdAt)}<br /><span className="text-xs text-muted-foreground">{localTime(order.createdAt)}</span></td><td className="text-right font-medium">{currency(order.totalAmount)}</td><td><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" onClick={() => sendToCook(order)} aria-label="Send to cook"><MessageCircle className="h-4 w-4" /></Button><Button size="icon" variant="ghost" onClick={() => printOrder(order)} aria-label="Print KOT"><Printer className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
+                  <tbody>{historyOrders.map((order) => <tr key={order.id} className="border-b border-white/5"><td className="py-3 font-medium">{order.orderNumber}</td><td>{order.customerName || "Walk-in"}<br /><span className="text-xs text-muted-foreground">{order.mobileNumber || ""}</span></td><td>{order.orderType}</td><td>{order.paymentMethod} · {order.paymentStatus}{order.offerCode ? <><br /><span className="text-xs text-emerald-300">{order.offerCode} -{currency(order.discountAmount || 0)}</span></> : null}</td><td><span className={`rounded-full px-2 py-1 text-xs ${statusClass(order.status)}`}>{order.status}</span></td><td>{localDate(order.createdAt)}<br /><span className="text-xs text-muted-foreground">{localTime(order.createdAt)}</span></td><td className="text-right font-medium">{currency(order.totalAmount)}</td><td><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" onClick={() => sendToCook(order)} aria-label="Send to cook"><MessageCircle className="h-4 w-4" /></Button><Button size="icon" variant="ghost" onClick={() => printOrder(order)} aria-label="Print KOT"><Printer className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
                 </table>
               </div>
             </CardContent>

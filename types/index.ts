@@ -291,6 +291,8 @@ export type RestaurantOrderItem = {
   lineTotal: number;
 };
 
+export type RestaurantOfferCode = "NONE" | "OBGO" | "TBGO";
+
 export type RestaurantOrder = {
   id: string;
   userId: string;
@@ -301,6 +303,10 @@ export type RestaurantOrder = {
   tableNumber?: string;
   items: RestaurantOrderItem[];
   notes?: string;
+  offerCode?: RestaurantOfferCode;
+  offerLabel?: string;
+  discountAmount?: number;
+  subTotal?: number;
   paymentMethod: RestaurantPaymentMethod;
   paymentStatus: RestaurantPaymentStatus;
   totalAmount: number;
