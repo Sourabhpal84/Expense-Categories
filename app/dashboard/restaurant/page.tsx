@@ -231,22 +231,22 @@ export default function RestaurantOperationsPage() {
 
   return (
     <>
-      <div className="restaurant-screen space-y-6">
+      <div className="restaurant-screen max-w-full space-y-4 overflow-x-hidden sm:space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Restaurant Operations</h1>
+          <h1 className="text-xl font-semibold sm:text-2xl">Restaurant Operations</h1>
           <p className="text-sm text-muted-foreground">Take orders, print kitchen tickets, and track every order through delivery.</p>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            return <Button key={tab.id} variant={section === tab.id ? "default" : "outline"} className="shrink-0" onClick={() => setSection(tab.id)}><Icon className="h-4 w-4" />{tab.label}</Button>;
+            return <Button key={tab.id} variant={section === tab.id ? "default" : "outline"} className="h-11 shrink-0 px-3 text-sm sm:h-10 sm:px-4" onClick={() => setSection(tab.id)}><Icon className="h-4 w-4" />{tab.label}</Button>;
           })}
         </div>
         {error ? <Card className="border-destructive/50"><CardContent className="p-4 text-sm text-destructive">{error}</CardContent></Card> : null}
 
         {section === "new" ? (
-          <form className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]" onSubmit={submitOrder}>
-            <Card>
+          <form className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,.75fr)] xl:gap-6" onSubmit={submitOrder}>
+            <Card className="min-w-0">
               <CardHeader><CardTitle className="flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-primary" />Create order from live menu</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
@@ -254,10 +254,10 @@ export default function RestaurantOperationsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>1. Choose category</Label>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    <Button type="button" variant={selectedCategory === "all" ? "default" : "outline"} className="shrink-0" onClick={() => setSelectedCategory("all")}>All</Button>
+                  <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+                    <Button type="button" variant={selectedCategory === "all" ? "default" : "outline"} className="h-10 shrink-0 px-3 text-sm" onClick={() => setSelectedCategory("all")}>All</Button>
                     {menuCategories.map((category) => (
-                      <Button key={category} type="button" variant={selectedCategory === category ? "default" : "outline"} className="shrink-0" onClick={() => setSelectedCategory(category)}>{category}</Button>
+                      <Button key={category} type="button" variant={selectedCategory === category ? "default" : "outline"} className="h-10 shrink-0 px-3 text-sm" onClick={() => setSelectedCategory(category)}>{category}</Button>
                     ))}
                   </div>
                 </div>
@@ -267,7 +267,7 @@ export default function RestaurantOperationsPage() {
                 </div>
                 {loading ? <p className="py-10 text-center text-muted-foreground">Loading live menu...</p> : null}
                 {!loading && !filteredMenu.length ? <p className="py-10 text-center text-muted-foreground">No items found for this category/search.</p> : null}
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2">
                   {filteredMenu.map((item) => (
                     <div key={item.id} className="rounded-lg border border-white/10 bg-white/[.03] p-4">
                       <p className="font-medium">{item.name}</p>
@@ -282,10 +282,10 @@ export default function RestaurantOperationsPage() {
               </CardContent>
             </Card>
 
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-4 lg:sticky lg:top-6 lg:self-start xl:space-y-6">
               <Card>
                 <CardHeader><CardTitle>Order information</CardTitle></CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
+                <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   <div className="space-y-2"><Label>Customer name (optional)</Label><Input value={form.customerName} onChange={(event) => setForm({ ...form, customerName: event.target.value })} /></div>
                   <div className="space-y-2"><Label>Mobile number (optional)</Label><Input inputMode="tel" value={form.mobileNumber} onChange={(event) => setForm({ ...form, mobileNumber: event.target.value })} /></div>
                   <div className="space-y-2"><Label>Order type</Label><Select value={form.orderType} onValueChange={(value) => setForm({ ...form, orderType: value as RestaurantOrderType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem></SelectContent></Select></div>
@@ -302,7 +302,7 @@ export default function RestaurantOperationsPage() {
                         <div><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.size} · {currency(item.unitPrice)}</p></div>
                         <Button type="button" size="icon" variant="ghost" onClick={() => setCart(cart.filter((_, itemIndex) => itemIndex !== index))}><Trash2 className="h-4 w-4" /></Button>
                       </div>
-                      <div className="grid grid-cols-[90px_1fr] gap-2"><Input type="number" min="1" value={item.quantity} onChange={(event) => updateCart(index, { quantity: Number(event.target.value) })} /><Input value={item.notes || ""} onChange={(event) => updateCart(index, { notes: event.target.value })} placeholder="Item instructions" /></div>
+                      <div className="grid gap-2 sm:grid-cols-[90px_1fr]"><Input type="number" min="1" value={item.quantity} onChange={(event) => updateCart(index, { quantity: Number(event.target.value) })} /><Input value={item.notes || ""} onChange={(event) => updateCart(index, { notes: event.target.value })} placeholder="Item instructions" /></div>
                     </div>
                   ))}
                   <div className="space-y-2"><Label>Order notes / special instructions</Label><Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
@@ -310,7 +310,7 @@ export default function RestaurantOperationsPage() {
               </Card>
               <Card>
                 <CardHeader><CardTitle>Payment</CardTitle></CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
+                <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   <div className="space-y-2"><Label>Method</Label><Select value={form.paymentMethod} onValueChange={(value) => setForm({ ...form, paymentMethod: value as RestaurantPaymentMethod })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select></div>
                   <div className="space-y-2"><Label>Status</Label><Select value={form.paymentStatus} onValueChange={(value) => setForm({ ...form, paymentStatus: value as RestaurantPaymentStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem></SelectContent></Select></div>
                   <div className="space-y-2 sm:col-span-2">
@@ -327,16 +327,16 @@ export default function RestaurantOperationsPage() {
                   </div>
                   {discountAmount > 0 ? <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm sm:col-span-2"><div className="flex justify-between"><span>Subtotal</span><span>{currency(subTotal)}</span></div><div className="flex justify-between text-emerald-300"><span>{offerLabels[offerCode]}</span><span>-{currency(discountAmount)}</span></div></div> : null}
                   <div className="flex items-center justify-between text-xl font-semibold sm:col-span-2"><span>Total</span><span>{currency(total)}</span></div>
-                  <Button className="sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Sending to kitchen..." : "Save Order & Send to Kitchen"}</Button>
+                  <Button className="h-11 sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Sending to kitchen..." : "Save Order & Send to Kitchen"}</Button>
                 </CardContent>
               </Card>
-              {selectedOrder ? <Card className="border-primary/40"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="font-medium">{selectedOrder.orderNumber} is ready</p><p className="text-sm text-muted-foreground">Print the kitchen ticket or send it to the cook.</p></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></CardContent></Card> : null}
+              {selectedOrder ? <Card className="border-primary/40"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{selectedOrder.orderNumber} is ready</p><p className="text-sm text-muted-foreground">Print the kitchen ticket or send it to the cook.</p></div><div className="grid gap-2 sm:flex"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></CardContent></Card> : null}
             </div>
           </form>
         ) : null}
 
         {section === "active" ? (
-          <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {!activeOrders.length && !loading ? <Card><CardContent className="p-8 text-center text-muted-foreground">No active orders.</CardContent></Card> : null}
             {activeOrders.map((order) => (
               <Card key={order.id}>
@@ -346,7 +346,7 @@ export default function RestaurantOperationsPage() {
                   {order.offerCode ? <p className="text-sm text-emerald-300">{order.offerLabel || order.offerCode}: -{currency(order.discountAmount || 0)}</p> : null}
                   <div className="flex justify-between border-t border-white/10 pt-3 text-sm"><span>{order.paymentMethod} · {order.paymentStatus}</span><strong>{currency(order.totalAmount)}</strong></div>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{localTime(order.createdAt)}</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid gap-2 sm:flex sm:flex-wrap">
                     {order.status === "New Order" ? <Button size="sm" onClick={() => changeStatus(order, "In Kitchen")}>Start Kitchen</Button> : null}
                     {order.status === "In Kitchen" ? <Button size="sm" onClick={() => changeStatus(order, "Ready")}>Mark Ready</Button> : null}
                     {order.status === "Ready" ? <Button size="sm" onClick={() => changeStatus(order, "Delivered")}>Mark Delivered</Button> : null}
@@ -364,15 +364,15 @@ export default function RestaurantOperationsPage() {
           <Card>
             <CardHeader><CardTitle>Order history</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <div className="relative md:col-span-2"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Order, customer, mobile..." /></div>
                 <Input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
                 <Select value={historyStatus} onValueChange={setHistoryStatus}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem>{statuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select>
-                <Button variant="outline" onClick={() => { setHistorySearch(""); setHistoryDate(""); setHistoryStatus("all"); setHistoryPayment("all"); setHistoryType("all"); }}>Clear filters</Button>
+                <Button className="w-full" variant="outline" onClick={() => { setHistorySearch(""); setHistoryDate(""); setHistoryStatus("all"); setHistoryPayment("all"); setHistoryType("all"); }}>Clear filters</Button>
                 <Select value={historyPayment} onValueChange={setHistoryPayment}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payments</SelectItem><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select>
                 <Select value={historyType} onValueChange={setHistoryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All order types</SelectItem><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem></SelectContent></Select>
               </div>
-              <div className="overflow-x-auto">
+              <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
                 <table className="w-full min-w-[850px] text-sm">
                   <thead className="text-left text-muted-foreground"><tr className="border-b border-white/10"><th className="py-3">Order</th><th>Customer</th><th>Type</th><th>Payment</th><th>Status</th><th>Time</th><th className="text-right">Total</th><th className="text-right">Actions</th></tr></thead>
                   <tbody>{historyOrders.map((order) => <tr key={order.id} className="border-b border-white/5"><td className="py-3 font-medium">{order.orderNumber}</td><td>{order.customerName || "Walk-in"}<br /><span className="text-xs text-muted-foreground">{order.mobileNumber || ""}</span></td><td>{order.orderType}</td><td>{order.paymentMethod} · {order.paymentStatus}{order.offerCode ? <><br /><span className="text-xs text-emerald-300">{order.offerCode} -{currency(order.discountAmount || 0)}</span></> : null}</td><td><span className={`rounded-full px-2 py-1 text-xs ${statusClass(order.status)}`}>{order.status}</span></td><td>{localDate(order.createdAt)}<br /><span className="text-xs text-muted-foreground">{localTime(order.createdAt)}</span></td><td className="text-right font-medium">{currency(order.totalAmount)}</td><td><div className="flex justify-end gap-1"><Button size="icon" variant="ghost" onClick={() => sendToCook(order)} aria-label="Send to cook"><MessageCircle className="h-4 w-4" /></Button><Button size="icon" variant="ghost" onClick={() => printOrder(order)} aria-label="Print KOT"><Printer className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
