@@ -19,20 +19,28 @@ export function useRestaurantOperations() {
       setLoadingOrders(false);
       return;
     }
-    const reportError = (value: Error) => {
-      setError(value.message || "Unable to load restaurant operations.");
+    const reportMenuError = (value: Error) => {
+      setError(value.message || "Unable to load the live menu.");
       setLoadingMenu(false);
+    };
+    const reportOrderError = (value: Error) => {
+      const firebaseError = value as Error & { code?: string };
+      setError(
+        firebaseError.code === "permission-denied"
+          ? "Restaurant order storage is not enabled in the deployed Firestore rules. Deploy the updated firestore.rules file, then refresh this page."
+          : value.message || "Unable to load restaurant orders."
+      );
       setLoadingOrders(false);
     };
     const unsubscribeMenu = subscribeRestaurantMenu((items) => {
       setMenu(items);
       setLoadingMenu(false);
-    }, reportError);
+    }, reportMenuError);
     const unsubscribeOrders = user
       ? subscribeRestaurantOrders(user.uid, (items) => {
           setOrders(items);
           setLoadingOrders(false);
-        }, reportError)
+        }, reportOrderError)
       : () => undefined;
     if (!user) setLoadingOrders(false);
     return () => {

@@ -43,7 +43,12 @@ function variantsFromDish(data: Record<string, unknown>): RestaurantMenuVariant[
   }
   if (candidates && typeof candidates === "object") {
     const variants = Object.entries(candidates as Record<string, unknown>)
-      .map(([name, price]) => ({ name, price: numberValue(price) }))
+      .map(([name, value]) => {
+        const price = value && typeof value === "object"
+          ? numberValue((value as Record<string, unknown>).price || (value as Record<string, unknown>).amount || (value as Record<string, unknown>).sellingPrice)
+          : numberValue(value);
+        return { name, price };
+      })
       .filter((variant) => variant.price >= 0);
     if (variants.length) return variants;
   }
@@ -62,12 +67,13 @@ export function subscribeRestaurantMenu(
     callback(
       dishes
         .map(({ id, data }) => {
-          const categoryId = String(data.categoryId || data.category || "");
+          const categoryId = String(data.categoryId || "");
+          const directCategoryName = typeof data.category === "string" ? data.category : "";
           return {
             id,
             name: String(data.name || data.title || data.productName || "Unnamed item"),
             categoryId: categoryId || undefined,
-            categoryName: String(data.categoryName || categoryNames.get(categoryId) || "Other"),
+            categoryName: String(data.categoryName || categoryNames.get(categoryId) || directCategoryName || "Other"),
             description: String(data.description || ""),
             imageUrl: String(data.imageUrl || data.image || ""),
             available: data.available !== false && data.isAvailable !== false && data.active !== false,
