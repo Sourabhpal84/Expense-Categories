@@ -166,6 +166,11 @@ export type Revenue = {
   paymentStatus?: string;
   paymentMethod?: string;
   orderStatus?: string;
+  orderNumber?: string;
+  customerName?: string;
+  orderItems?: string;
+  deliveryAddress?: string;
+  paymentReference?: string;
   phone?: string;
   revenueState?: "net" | "pending" | "refunded" | "lost";
   notes?: string;

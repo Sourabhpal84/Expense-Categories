@@ -20,6 +20,16 @@ const revenueChannels: Revenue["channel"][] = ["Store", "Dine-in", "Takeaway", "
 const revenueTypes: NonNullable<Revenue["revenueType"]>[] = ["Food Sales", "Delivery Fee", "Catering", "Party Order", "Subscription", "Commission", "Refund Reversal", "Other"];
 const paymentMethods = ["Cash", "UPI", "Card", "COD", "Bank Transfer", "Zomato", "Swiggy", "Razorpay", "Other"];
 
+function revenueDetail(item: Revenue) {
+  if (item.source !== "website") return item.notes || "-";
+  return [
+    item.orderItems ? `Items: ${item.orderItems}` : "",
+    item.phone ? `Phone: ${item.phone}` : "",
+    item.deliveryAddress ? `Address: ${item.deliveryAddress}` : "",
+    item.paymentReference ? `Payment Ref: ${item.paymentReference}` : ""
+  ].filter(Boolean).join(" | ") || item.notes || "-";
+}
+
 export default function RevenuePage() {
   const { user, configured } = useAuth();
   const { revenues, expenses, metrics, demoMode } = useBusinessData();
@@ -156,9 +166,9 @@ export default function RevenuePage() {
       <Card>
         <CardHeader><CardTitle>Revenue analytics</CardTitle></CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
-            <thead className="text-left text-muted-foreground"><tr className="border-b border-white/10"><th className="py-3">Date</th><th>Source</th><th>Type</th><th>Payment</th><th>Channel</th><th>Product</th><th>Added By</th><th>Notes</th><th className="text-right">Orders</th><th className="text-right">Revenue</th><th className="text-right">Actions</th></tr></thead>
-            <tbody>{revenues.map((item) => <tr key={item.id} className="border-b border-white/5"><td className="py-3 text-muted-foreground">{item.date}</td><td>{item.revenueSource || (item.source === "website" ? "Website order" : "Manual offline")}</td><td>{item.revenueType || "Food Sales"}</td><td>{item.paymentMethod || "-"}</td><td>{item.channel}</td><td>{item.product}</td><td>{item.createdBy || "-"}</td><td className="max-w-xs truncate text-muted-foreground">{item.notes || "-"}</td><td className="text-right">{item.orders}</td><td className="text-right font-medium">{currency(item.amount)}</td><td className="text-right"><Button size="icon" variant="ghost" disabled={item.source === "website"} onClick={() => setEditing(item)} aria-label="Edit revenue"><Edit className="h-4 w-4" /></Button><Button size="icon" variant="ghost" disabled={item.source === "website"} onClick={() => remove(item)} aria-label="Delete revenue"><Trash2 className="h-4 w-4" /></Button></td></tr>)}</tbody>
+          <table className="w-full min-w-[1200px] text-sm">
+            <thead className="text-left text-muted-foreground"><tr className="border-b border-white/10"><th className="py-3">Date</th><th>Order</th><th>Customer</th><th>Source</th><th>Type</th><th>Payment</th><th>Status</th><th>Channel</th><th>Product</th><th>Details</th><th className="text-right">Orders</th><th className="text-right">Revenue</th><th className="text-right">Actions</th></tr></thead>
+            <tbody>{revenues.map((item) => <tr key={item.id} className="border-b border-white/5 align-top"><td className="py-3 text-muted-foreground">{item.date}</td><td className="py-3 font-medium">{item.orderNumber || (item.source === "website" ? item.id.replace("website-", "") : "-")}</td><td className="py-3">{item.customerName || "-"}<br /><span className="text-xs text-muted-foreground">{item.phone || ""}</span></td><td className="py-3">{item.revenueSource || (item.source === "website" ? "Website order" : "Manual offline")}</td><td className="py-3">{item.revenueType || "Food Sales"}</td><td className="py-3">{item.paymentMethod || "-"}<br /><span className="text-xs text-muted-foreground">{item.paymentStatus || ""}</span></td><td className="py-3">{item.orderStatus || item.revenueState || "-"}</td><td className="py-3">{item.channel}</td><td className="py-3">{item.product}</td><td className="max-w-md py-3 text-muted-foreground">{revenueDetail(item)}</td><td className="py-3 text-right">{item.orders}</td><td className="py-3 text-right font-medium">{currency(item.amount)}</td><td className="py-3 text-right"><Button size="icon" variant="ghost" disabled={item.source === "website"} onClick={() => setEditing(item)} aria-label="Edit revenue"><Edit className="h-4 w-4" /></Button><Button size="icon" variant="ghost" disabled={item.source === "website"} onClick={() => remove(item)} aria-label="Delete revenue"><Trash2 className="h-4 w-4" /></Button></td></tr>)}</tbody>
           </table>
         </CardContent>
       </Card>

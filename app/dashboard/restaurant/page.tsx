@@ -257,7 +257,7 @@ export default function RestaurantOperationsPage() {
       return;
     }
 
-    const { jsPDF } = await import("jspdf");
+    const { jsPDF } = await import("jspdf/dist/jspdf.umd.min");
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();

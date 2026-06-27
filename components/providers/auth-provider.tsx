@@ -3,7 +3,9 @@
 import {
   User,
   createUserWithEmailAndPassword,
+  browserLocalPersistence,
   onAuthStateChanged,
+  setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -38,6 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.warn("[MAGNEETOZ] Unable to force local auth persistence", error);
+    });
     return onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setAuthHint(Boolean(currentUser));
@@ -48,11 +53,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     if (!auth) throw new Error("Firebase is not configured.");
-    await signInWithEmailAndPassword(auth, email, password);
+    await setPersistence(auth, browserLocalPersistence);
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    setUser(credential.user);
+    setAuthHint(true);
   }, []);
 
   const signup = useCallback(async (name: string, email: string, password: string) => {
     if (!auth) throw new Error("Firebase is not configured.");
+    await setPersistence(auth, browserLocalPersistence);
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(credential.user, { displayName: name });
     await ensureUserProfile(credential.user, name);
@@ -60,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithGoogle = useCallback(async () => {
     if (!auth) throw new Error("Firebase is not configured.");
+    await setPersistence(auth, browserLocalPersistence);
     const credential = await signInWithPopup(auth, googleProvider);
     await ensureUserProfile(credential.user);
   }, []);

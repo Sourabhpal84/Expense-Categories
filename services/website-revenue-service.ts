@@ -6,8 +6,15 @@ type WebsiteOrder = {
   orderNumber?: string;
   orderId?: string;
   customerName?: string;
+  name?: string;
   phone?: string;
+  mobileNumber?: string;
+  customerPhone?: string;
+  address?: string;
+  deliveryAddress?: string | { address?: string; line1?: string; city?: string; pincode?: string };
   totalAmount?: number;
+  amount?: number;
+  grandTotal?: number;
   paymentMethod?: string;
   paymentMode?: string;
   paymentStatus?: string;
@@ -19,7 +26,7 @@ type WebsiteOrder = {
   paymentCaptured?: boolean;
   razorpayPaymentId?: string;
   createdAt?: { toDate?: () => Date } | string;
-  items?: Array<{ name?: string; qty?: number }>;
+  items?: Array<{ name?: string; title?: string; productName?: string; qty?: number; quantity?: number; size?: string; price?: number }>;
 };
 
 function requireDb() {
@@ -76,7 +83,38 @@ function revenueState(order: WebsiteOrder): Revenue["revenueState"] {
 
 function bestSellingProduct(order: WebsiteOrder) {
   const firstItem = order.items?.[0];
-  return firstItem?.name || `Online order #${order.orderNumber || order.orderId || "MAGNEETOZ"}`;
+  return firstItem?.name || firstItem?.title || firstItem?.productName || `Online order #${order.orderNumber || order.orderId || "MAGNEETOZ"}`;
+}
+
+function customerName(order: WebsiteOrder) {
+  return order.customerName || order.name || "Online customer";
+}
+
+function customerPhone(order: WebsiteOrder) {
+  return order.phone || order.mobileNumber || order.customerPhone || "";
+}
+
+function orderItems(order: WebsiteOrder) {
+  return (order.items || [])
+    .map((item) => {
+      const name = item.name || item.title || item.productName || "Item";
+      const quantity = Number(item.quantity || item.qty || 1);
+      const size = item.size ? ` (${item.size})` : "";
+      return `${quantity} x ${name}${size}`;
+    })
+    .join(", ");
+}
+
+function deliveryAddress(order: WebsiteOrder) {
+  if (typeof order.deliveryAddress === "string") return order.deliveryAddress;
+  if (order.deliveryAddress && typeof order.deliveryAddress === "object") {
+    return [order.deliveryAddress.address, order.deliveryAddress.line1, order.deliveryAddress.city, order.deliveryAddress.pincode].filter(Boolean).join(", ");
+  }
+  return order.address || "";
+}
+
+function orderTotal(order: WebsiteOrder) {
+  return Number(order.totalAmount || order.grandTotal || order.amount || 0);
 }
 
 export function subscribeWebsiteOnlineRevenue(userId: string, callback: (items: Revenue[]) => void, onError?: (error: Error) => void) {
@@ -95,16 +133,30 @@ export function subscribeWebsiteOnlineRevenue(userId: string, callback: (items: 
             userId,
             product: bestSellingProduct(order),
             orders: 1,
-            amount: Number(order.totalAmount) || 0,
+            amount: orderTotal(order),
             date: orderDate(order),
             channel: "Website",
             createdAt: orderDate(order),
             source: "website",
+            revenueSource: `Online order ${order.orderNumber || order.orderId || docSnap.id}`,
+            revenueType: "Food Sales",
             paymentStatus: order.paymentStatus || (isPaidOnline(order) ? "paid" : "pending"),
             paymentMethod: order.paymentMethod || order.paymentMode,
             orderStatus: order.status || order.orderStatus,
+            orderNumber: order.orderNumber || order.orderId || docSnap.id,
+            customerName: customerName(order),
+            orderItems: orderItems(order),
+            deliveryAddress: deliveryAddress(order),
+            paymentReference: order.razorpayPaymentId,
+            notes: [
+              `Customer: ${customerName(order)}`,
+              customerPhone(order) ? `Phone: ${customerPhone(order)}` : "",
+              orderItems(order) ? `Items: ${orderItems(order)}` : "",
+              deliveryAddress(order) ? `Address: ${deliveryAddress(order)}` : "",
+              order.razorpayPaymentId ? `Payment Ref: ${order.razorpayPaymentId}` : ""
+            ].filter(Boolean).join(" | "),
             revenueState: state,
-            phone: order.phone
+            phone: customerPhone(order)
           } satisfies Revenue;
         })
         .sort((a, b) => b.date.localeCompare(a.date));
