@@ -14,13 +14,14 @@ import { useSpeech } from "@/hooks/use-speech";
 import { parseReceiptWithAi, parseVoiceExpense } from "@/lib/ai";
 import { addExpense } from "@/services/data-service";
 import { uploadReceipt } from "@/services/storage-service";
-import { expenseCategories, type ExpenseCategory } from "@/types";
+import { expenseCategories, type ExpenseCategory, type FinanceAccount } from "@/types";
 import { fileToDataUrl, extractTextFromImage } from "@/utils/ocr";
 
 type FormState = {
   vendor: string;
   amount: string;
   category: ExpenseCategory;
+  paidFrom: FinanceAccount;
   date: string;
   notes: string;
 };
@@ -29,9 +30,17 @@ const defaultForm: FormState = {
   vendor: "",
   amount: "",
   category: "Misc",
+  paidFrom: "unknown",
   date: new Date().toISOString().slice(0, 10),
   notes: ""
 };
+
+const paidFromOptions: Array<{ value: FinanceAccount; label: string }> = [
+  { value: "shop_cash", label: "Shop Cash" },
+  { value: "business_bank_upi", label: "Business Bank/UPI" },
+  { value: "owner_personal_upi", label: "Owner Personal UPI" },
+  { value: "unknown", label: "Unknown / Closing me decide" }
+];
 
 export function ExpenseForm() {
   const { user, configured } = useAuth();
@@ -46,8 +55,8 @@ export function ExpenseForm() {
     setForm((current) => ({
       ...current,
       vendor: data.vendor || current.vendor,
-      amount: data.amount ? String(data.amount) : current.amount,
-      category: expenseCategories.includes(data.category as ExpenseCategory) ? (data.category as ExpenseCategory) : current.category,
+        amount: data.amount ? String(data.amount) : current.amount,
+        category: expenseCategories.includes(data.category as ExpenseCategory) ? (data.category as ExpenseCategory) : current.category,
       date: data.date || current.date,
       notes: data.rawText ? `${current.notes}\nOCR: ${data.rawText}`.trim() : current.notes
     }));
@@ -94,6 +103,7 @@ export function ExpenseForm() {
         vendor: form.vendor,
         amount: Number(form.amount),
         category: form.category,
+        paidFrom: form.paidFrom,
         date: form.date,
         notes: form.notes,
         receiptUrl
@@ -129,6 +139,13 @@ export function ExpenseForm() {
             <Select value={form.category} onValueChange={(value) => setForm({ ...form, category: value as ExpenseCategory })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>{expenseCategories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Paid from</Label>
+            <Select value={form.paidFrom} onValueChange={(value) => setForm({ ...form, paidFrom: value as FinanceAccount })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{paidFromOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-2">

@@ -564,6 +564,33 @@ service cloud.firestore {
       allow update, delete: if owns(resource.data.userId);
     }
 
+    match /dailySessions/{documentId} {
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
+      allow update, delete: if owns(resource.data.userId);
+    }
+
+    match /ledgerTransactions/{documentId} {
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
+      allow update: if owns(resource.data.userId);
+      allow delete: if false;
+    }
+
+    match /cashAdjustments/{documentId} {
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
+      allow update: if owns(resource.data.userId);
+      allow delete: if false;
+    }
+
+    match /closingReports/{documentId} {
+      allow read: if owns(resource.data.userId);
+      allow create: if owns(request.resource.data.userId);
+      allow update: if owns(resource.data.userId);
+      allow delete: if false;
+    }
+
     match /auditLogs/{documentId} {
       allow read: if isAdmin();
       allow create: if signedIn();

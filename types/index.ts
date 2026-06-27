@@ -92,12 +92,98 @@ export type Expense = {
   amount: number;
   category: ExpenseCategory;
   date: string;
+  paidFrom?: FinanceAccount;
+  supplier?: string;
   notes?: string;
   receiptUrl?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
   updatedBy?: string;
+};
+
+export type FinanceAccount = "shop_cash" | "business_bank_upi" | "owner_personal_upi" | "unknown";
+
+export type LedgerTransactionType =
+  | "income"
+  | "expense"
+  | "transfer"
+  | "owner_contribution"
+  | "owner_withdrawal"
+  | "adjustment";
+
+export type DailySessionStatus = "open" | "closed" | "reopened";
+
+export type LedgerTransaction = {
+  id: string;
+  userId: string;
+  date: string;
+  sessionId?: string;
+  type: LedgerTransactionType;
+  amount: number;
+  sourceAccount?: FinanceAccount;
+  destinationAccount?: FinanceAccount;
+  category?: string;
+  note?: string;
+  relatedOrderId?: string;
+  relatedExpenseId?: string;
+  voided?: boolean;
+  voidReason?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type ClosingAdjustment = {
+  id: string;
+  userId: string;
+  date: string;
+  sessionId: string;
+  reason:
+    | "missing_expense"
+    | "owner_withdrawal"
+    | "owner_contribution"
+    | "cash_to_bank"
+    | "bank_to_cash"
+    | "supplier_payment"
+    | "personal_expense_from_shop"
+    | "cash_shortage"
+    | "extra_cash"
+    | "other_adjustment";
+  amount: number;
+  account: "cash" | "bank" | "both";
+  note?: string;
+  createdAt: string;
+};
+
+export type DailySession = {
+  id: string;
+  userId: string;
+  date: string;
+  openingCash: number;
+  openingBank: number;
+  openingOwnerBalance: number;
+  closingCashActual?: number;
+  closingBankActual?: number;
+  pendingRazorpaySettlement?: number;
+  expectedCash?: number;
+  expectedBank?: number;
+  cashDifference?: number;
+  bankDifference?: number;
+  totalRevenue?: number;
+  totalExpenses?: number;
+  netProfit?: number;
+  ownerContributionToday?: number;
+  ownerWithdrawalToday?: number;
+  ownerBalanceClosing?: number;
+  status: DailySessionStatus;
+  notes?: string;
+  adjustmentNotes?: string;
+  needsRecalculation?: boolean;
+  reopenedReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string;
 };
 
 export type PersonalExpenseCategory =

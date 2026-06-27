@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Bell, Boxes, Brain, ChefHat, CircleDollarSign, Home, LayoutDashboard, LogOut, MessageSquare, PieChart, ReceiptText, Settings, Users, WalletCards, X } from "lucide-react";
+import { BarChart3, Bell, BookOpenCheck, Boxes, Brain, ChefHat, CircleDollarSign, Home, LayoutDashboard, LogOut, MessageSquare, PieChart, ReceiptText, Settings, Users, WalletCards, X } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ const nav = [
   { href: "/dashboard/expenses", label: "Expenses", icon: ReceiptText },
   { href: "/dashboard/personal-expenses", label: "Personal", icon: Home },
   { href: "/dashboard/revenue", label: "Revenue", icon: CircleDollarSign },
+  { href: "/dashboard/daily-closing", label: "Daily Closing", icon: BookOpenCheck },
   { href: "/dashboard/inventory", label: "Inventory", icon: Boxes },
   { href: "/dashboard/restaurant", label: "Restaurant Operations", icon: ChefHat },
   { href: "/dashboard/crm", label: "CRM", icon: Users },
