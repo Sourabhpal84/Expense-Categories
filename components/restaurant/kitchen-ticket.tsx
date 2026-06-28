@@ -21,7 +21,11 @@ export function KitchenTicket({ order }: { order: RestaurantOrder | null }) {
             {order.items.map((item, index) => (
               <tr key={`${item.menuItemId}-${index}`} className="border-b border-black">
                 <td className="py-4 align-top font-bold">{item.quantity}</td>
-                <td className="align-top font-semibold">{item.name}{item.size && item.size !== "Standard" ? ` (${item.size})` : ""}</td>
+                <td className="align-top font-semibold">
+                  {item.name}{item.size && item.size !== "Standard" ? ` (${item.size})` : ""}
+                  {item.crustType || item.crust?.label ? <div className="mt-1 text-base font-normal">Crust: {item.crustType || item.crust?.label}</div> : null}
+                  {item.extras?.length ? <div className="mt-1 text-base font-normal">Extras: {item.extras.map((extra) => extra.name).join(", ")}</div> : null}
+                </td>
                 <td className="align-top">{item.notes || "-"}</td>
               </tr>
             ))}

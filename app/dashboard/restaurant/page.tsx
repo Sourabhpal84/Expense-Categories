@@ -14,6 +14,8 @@ import { useToast } from "@/components/ui/toaster";
 import { useRestaurantOperations } from "@/hooks/use-restaurant-operations";
 import { createRestaurantOrder, updateRestaurantOrderStatus } from "@/services/restaurant-operations-service";
 import type {
+  RestaurantCartCrust,
+  RestaurantCartExtra,
   RestaurantMenuItem,
   RestaurantOfferCode,
   RestaurantOrder,
@@ -34,6 +36,20 @@ const offerLabels: Record<RestaurantOfferCode, string> = {
   OBGO: "OBGO - Buy 1 Get 1 Free",
   TBGO: "TBGO - Buy 2 Get 1 Free"
 };
+const extraToppings: RestaurantCartExtra[] = [
+  { id: "extra_tomato", name: "Extra Tomato", price: 20 },
+  { id: "extra_onion", name: "Extra Onion", price: 20 },
+  { id: "extra_capsicum", name: "Extra Capsicum", price: 20 },
+  { id: "extra_sweet_corn", name: "Extra Sweet Corn", price: 20 },
+  { id: "extra_jalapeno", name: "Extra Jalapeno", price: 20 },
+  { id: "extra_black_olives", name: "Extra Black Olives", price: 20 },
+  { id: "extra_cheese", name: "Extra Cheese", price: 40 }
+];
+const crustOptions: RestaurantCartCrust[] = [
+  { id: "thin", label: "Thin Crust", description: "Crispy & Crunchy" },
+  { id: "pan", label: "Pan Crust", description: "Soft & Fluffy" }
+];
+const defaultCrust = crustOptions.find((item) => item.id === "pan") || crustOptions[0];
 
 type Section = "new" | "active" | "history" | "summary";
 
@@ -46,7 +62,12 @@ function statusClass(status: RestaurantOrderStatus) {
 }
 
 function whatsappMessage(order: RestaurantOrder) {
-  const itemLines = order.items.map((item) => `${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size.charAt(0)})` : ""}${item.notes ? ` - ${item.notes}` : ""}`).join("\n");
+  const itemLines = order.items.map((item) => {
+    const extras = item.extras?.length ? `\n   Extras: ${item.extras.map((extra) => `${extra.name} +${currency(extra.price)}`).join(", ")}` : "";
+    const crust = item.crustType || item.crust?.label ? `\n   Crust: ${item.crustType || item.crust?.label}` : "";
+    const notes = item.notes ? `\n   Note: ${item.notes}` : "";
+    return `${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size.charAt(0)})` : ""}${crust}${extras}${notes}`;
+  }).join("\n");
   return [
     "MAGNEETOZ - NEW ORDER",
     "",
@@ -73,7 +94,7 @@ function whatsappMessage(order: RestaurantOrder) {
 }
 
 function calculateOfferDiscount(items: RestaurantOrderItem[], offerCode: RestaurantOfferCode) {
-  const unitPrices = items.flatMap((item) => Array.from({ length: Math.max(0, item.quantity) }, () => item.unitPrice)).sort((a, b) => a - b);
+  const unitPrices = items.flatMap((item) => Array.from({ length: Math.max(0, item.quantity) }, () => item.unitPrice + (item.extrasTotal || 0))).sort((a, b) => a - b);
   if (offerCode === "OBGO") {
     const freeCount = Math.floor(unitPrices.length / 2);
     return unitPrices.slice(0, freeCount).reduce((sum, price) => sum + price, 0);
@@ -83,6 +104,32 @@ function calculateOfferDiscount(items: RestaurantOrderItem[], offerCode: Restaur
     return unitPrices.slice(0, freeCount).reduce((sum, price) => sum + price, 0);
   }
   return 0;
+}
+
+function extrasTotal(extras: RestaurantCartExtra[] = []) {
+  return extras.reduce((sum, item) => sum + Number(item.price || 0), 0);
+}
+
+function itemUnitTotal(item: RestaurantOrderItem) {
+  return Number(item.unitPrice || 0) + extrasTotal(item.extras);
+}
+
+function normalizeCartLine(item: RestaurantOrderItem): RestaurantOrderItem {
+  const extras = item.extras || [];
+  const extraTotal = extrasTotal(extras);
+  const quantity = Math.max(1, Number(item.quantity) || 1);
+  return {
+    ...item,
+    baseUnitPrice: item.baseUnitPrice || item.unitPrice,
+    extras,
+    addOns: extras,
+    extrasTotal: extraTotal,
+    crust: item.crust || defaultCrust,
+    crustType: item.crustType || item.crust?.label || defaultCrust.label,
+    selectedCrust: item.selectedCrust || item.crust?.id || defaultCrust.id,
+    quantity,
+    lineTotal: quantity * (Number(item.unitPrice || 0) + extraTotal)
+  };
 }
 
 export default function RestaurantOperationsPage() {
@@ -179,20 +226,34 @@ export default function RestaurantOperationsPage() {
 
   function addMenuItem(item: RestaurantMenuItem, variantIndex: number) {
     const variant = item.variants[variantIndex] || item.variants[0];
-    const existingIndex = cart.findIndex((line) => line.menuItemId === item.id && line.size === variant.name && !line.notes);
+    const existingIndex = cart.findIndex((line) => line.menuItemId === item.id && line.size === variant.name && !line.notes && !line.extras?.length && (line.selectedCrust || defaultCrust.id) === defaultCrust.id);
     if (existingIndex >= 0) {
-      setCart(cart.map((line, index) => index === existingIndex ? { ...line, quantity: line.quantity + 1, lineTotal: (line.quantity + 1) * line.unitPrice } : line));
+      setCart(cart.map((line, index) => index === existingIndex ? normalizeCartLine({ ...line, quantity: line.quantity + 1 }) : line));
       return;
     }
-    setCart([...cart, { menuItemId: item.id, name: item.name, categoryName: item.categoryName, size: variant.name, unitPrice: variant.price, quantity: 1, lineTotal: variant.price }]);
+    setCart([...cart, normalizeCartLine({ menuItemId: item.id, name: item.name, categoryName: item.categoryName, size: variant.name, baseUnitPrice: variant.price, unitPrice: variant.price, quantity: 1, extras: [], addOns: [], extrasTotal: 0, crust: defaultCrust, crustType: defaultCrust.label, selectedCrust: defaultCrust.id, lineTotal: variant.price })]);
   }
 
   function updateCart(index: number, patch: Partial<RestaurantOrderItem>) {
     setCart(cart.map((item, itemIndex) => {
       if (itemIndex !== index) return item;
-      const next = { ...item, ...patch };
-      return { ...next, quantity: Math.max(1, Number(next.quantity)), lineTotal: Math.max(1, Number(next.quantity)) * next.unitPrice };
+      return normalizeCartLine({ ...item, ...patch });
     }));
+  }
+
+  function setCartCrust(index: number, crustId: string) {
+    const crust = crustOptions.find((item) => item.id === crustId) || defaultCrust;
+    updateCart(index, { crust, crustType: crust.label, selectedCrust: crust.id });
+  }
+
+  function toggleCartExtra(index: number, extra: RestaurantCartExtra, checked: boolean) {
+    const line = cart[index];
+    if (!line) return;
+    const current = line.extras || [];
+    const extras = checked
+      ? [...current.filter((item) => item.id !== extra.id), extra]
+      : current.filter((item) => item.id !== extra.id);
+    updateCart(index, { extras, addOns: extras, extrasTotal: extrasTotal(extras) });
   }
 
   async function submitOrder(event: FormEvent) {
@@ -332,7 +393,11 @@ export default function RestaurantOperationsPage() {
       .forEach((order) => {
         line(`${order.orderNumber} | ${localTime(order.createdAt)} | ${order.orderType}${order.tableNumber ? ` - ${order.tableNumber}` : ""} | ${order.status} | ${order.paymentMethod} ${order.paymentStatus} | Total: ${money(order.totalAmount)}`, 9, "bold", 14);
         line(`Customer: ${order.customerName || "Walk-in"}${order.mobileNumber ? ` | Mobile: ${order.mobileNumber}` : ""}`, 8, "normal", 12);
-        order.items.forEach((item) => line(`   - ${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size})` : ""} @ ${money(item.unitPrice)}${item.notes ? ` | Note: ${item.notes}` : ""}`, 8, "normal", 12));
+        order.items.forEach((item) => {
+          const extras = item.extras?.length ? ` | Extras: ${item.extras.map((extra) => `${extra.name} +${money(extra.price)}`).join(", ")}` : "";
+          const crust = item.crustType || item.crust?.label ? ` | Crust: ${item.crustType || item.crust?.label}` : "";
+          line(`   - ${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size})` : ""} @ ${money(item.unitPrice + (item.extrasTotal || 0))}${crust}${extras}${item.notes ? ` | Note: ${item.notes}` : ""}`, 8, "normal", 12);
+        });
         if (order.offerCode) line(`   Offer: ${order.offerLabel || order.offerCode} | Discount: ${money(order.discountAmount || 0)}`, 8, "normal", 12);
         if (order.notes) line(`   Order notes: ${order.notes}`, 8, "normal", 12);
         y += 4;
@@ -418,8 +483,39 @@ export default function RestaurantOperationsPage() {
                   {cart.map((item, index) => (
                     <div key={`${item.menuItemId}-${item.size}-${index}`} className="space-y-3 rounded-lg border border-white/10 p-3">
                       <div className="flex items-start justify-between gap-3">
-                        <div><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.size} · {currency(item.unitPrice)}</p></div>
+                        <div><p className="font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.size} · {currency(item.unitPrice)} base · {item.crustType || item.crust?.label || defaultCrust.label}</p></div>
                         <Button type="button" size="icon" variant="ghost" onClick={() => setCart(cart.filter((_, itemIndex) => itemIndex !== index))}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                      <div className="space-y-2 rounded-lg bg-white/[.03] p-3">
+                        <p className="text-xs font-medium text-muted-foreground">Crust option</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {crustOptions.map((option) => (
+                            <label key={option.id} className={`cursor-pointer rounded-lg border p-3 text-sm ${item.selectedCrust === option.id ? "border-primary bg-primary/10" : "border-white/10 bg-white/[.02]"}`}>
+                              <input className="sr-only" type="radio" name={`cart-crust-${index}`} checked={item.selectedCrust === option.id} onChange={() => setCartCrust(index, option.id)} />
+                              <span className="font-medium">{option.label}</span>
+                              <small className="block text-muted-foreground">{option.description}</small>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <details className="rounded-lg border border-white/10 p-3">
+                        <summary className="cursor-pointer text-sm font-medium">Extra Toppings / Add-ons</summary>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {extraToppings.map((extra) => {
+                            const checked = Boolean(item.extras?.some((selected) => selected.id === extra.id));
+                            return (
+                              <label key={extra.id} className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-sm ${checked ? "border-primary bg-primary/10" : "border-white/10"}`}>
+                                <span className="flex items-center gap-2"><input type="checkbox" checked={checked} onChange={(event) => toggleCartExtra(index, extra, event.target.checked)} />{extra.name}</span>
+                                <b>{currency(extra.price)}</b>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </details>
+                      <div className="space-y-1 rounded-lg bg-white/[.03] p-3 text-sm">
+                        <div className="flex justify-between"><span>{item.name} base</span><b>{currency(item.unitPrice * item.quantity)}</b></div>
+                        {(item.extras || []).map((extra) => <div key={extra.id} className="flex justify-between text-muted-foreground"><span>{extra.name}</span><b>{currency(extra.price * item.quantity)}</b></div>)}
+                        {(item.extrasTotal || 0) > 0 ? <div className="flex justify-between border-t border-white/10 pt-2 font-semibold"><span>Item total</span><b>{currency(item.lineTotal)}</b></div> : null}
                       </div>
                       <div className="grid gap-2 sm:grid-cols-[90px_1fr]"><Input type="number" min="1" value={item.quantity} onChange={(event) => updateCart(index, { quantity: Number(event.target.value) })} /><Input value={item.notes || ""} onChange={(event) => updateCart(index, { notes: event.target.value })} placeholder="Item instructions" /></div>
                     </div>
@@ -461,7 +557,7 @@ export default function RestaurantOperationsPage() {
               <Card key={order.id}>
                 <CardContent className="space-y-4 p-5">
                   <div className="flex items-start justify-between"><div><p className="text-xl font-semibold">{order.orderNumber}</p><p className="text-sm text-muted-foreground">{order.customerName || "Walk-in customer"} · {order.orderType}{order.tableNumber ? ` · ${order.tableNumber}` : ""}</p></div><span className={`rounded-full px-2.5 py-1 text-xs ${statusClass(order.status)}`}>{order.status}</span></div>
-                  <div className="space-y-1 text-sm">{order.items.map((item, index) => <p key={index}>{item.quantity} × {item.name}{item.size !== "Standard" ? ` (${item.size})` : ""}</p>)}</div>
+                  <div className="space-y-1 text-sm">{order.items.map((item, index) => <p key={index}>{item.quantity} × {item.name}{item.size !== "Standard" ? ` (${item.size})` : ""}{item.crustType ? ` · ${item.crustType}` : ""}{item.extras?.length ? ` · Extras: ${item.extras.map((extra) => extra.name).join(", ")}` : ""}</p>)}</div>
                   {order.offerCode ? <p className="text-sm text-emerald-300">{order.offerLabel || order.offerCode}: -{currency(order.discountAmount || 0)}</p> : null}
                   <div className="flex justify-between border-t border-white/10 pt-3 text-sm"><span>{order.paymentMethod} · {order.paymentStatus}</span><strong>{currency(order.totalAmount)}</strong></div>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{localTime(order.createdAt)}</p>

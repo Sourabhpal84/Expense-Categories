@@ -371,12 +371,31 @@ export type RestaurantMenuItem = {
   variants: RestaurantMenuVariant[];
 };
 
+export type RestaurantCartExtra = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+export type RestaurantCartCrust = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
 export type RestaurantOrderItem = {
   menuItemId: string;
   name: string;
   categoryName?: string;
   size?: string;
+  baseUnitPrice?: number;
   unitPrice: number;
+  extras?: RestaurantCartExtra[];
+  addOns?: RestaurantCartExtra[];
+  extrasTotal?: number;
+  crust?: RestaurantCartCrust;
+  crustType?: string;
+  selectedCrust?: string;
   quantity: number;
   notes?: string;
   lineTotal: number;
