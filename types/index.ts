@@ -369,6 +369,7 @@ export type RestaurantMenuItem = {
   imageUrl?: string;
   available: boolean;
   variants: RestaurantMenuVariant[];
+  productType?: "dish" | "combo";
 };
 
 export type RestaurantCartExtra = {
@@ -425,4 +426,5 @@ export type RestaurantOrder = {
   updatedAt: string;
   deliveredAt?: string;
   cancelledAt?: string;
+  paidAt?: string;
 };

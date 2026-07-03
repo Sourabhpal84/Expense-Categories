@@ -14,6 +14,7 @@ import type {
   RestaurantMenuItem,
   RestaurantMenuVariant,
   RestaurantOrder,
+  RestaurantPaymentStatus,
   RestaurantOrderStatus
 } from "@/types";
 
@@ -69,6 +70,29 @@ function variantsFromDish(data: Record<string, unknown>): RestaurantMenuVariant[
   return [{ name: String(data.size || "Standard"), price: numberValue(data.price || data.basePrice || data.sellingPrice) }];
 }
 
+function comboDescription(data: Record<string, unknown>) {
+  if (data.description) return String(data.description);
+  const items = data.items || data.comboItems || data.products || data.dishes;
+  if (!Array.isArray(items)) return "";
+  return items
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return String(entry || "").trim();
+      const row = entry as Record<string, unknown>;
+      const quantity = Number(row.quantity || row.qty || 1);
+      const name = String(row.name || row.title || row.productName || row.dishName || "").trim();
+      return name ? `${quantity} x ${name}` : "";
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function variantsFromCombo(data: Record<string, unknown>): RestaurantMenuVariant[] {
+  const sizedVariants = variantsFromDish(data).filter((variant) => variant.price > 0);
+  if (sizedVariants.length) return sizedVariants;
+  const price = numberValue(data.price || data.comboPrice || data.offerPrice || data.sellingPrice || data.totalPrice || data.amount);
+  return [{ name: "Combo", price }];
+}
+
 export function subscribeRestaurantMenu(
   callback: (items: RestaurantMenuItem[]) => void,
   onError: (error: Error) => void
@@ -76,24 +100,40 @@ export function subscribeRestaurantMenu(
   const database = requireDb();
   let categoryNames = new Map<string, string>();
   let dishes: Array<{ id: string; data: Record<string, unknown> }> = [];
+  let combos: Array<{ id: string; data: Record<string, unknown> }> = [];
 
   const publish = () => {
+    const dishItems = dishes.map(({ id, data }) => {
+      const categoryId = String(data.categoryId || "");
+      const directCategoryName = typeof data.category === "string" ? data.category : "";
+      return {
+        id,
+        name: String(data.name || data.title || data.productName || "Unnamed item"),
+        categoryId: categoryId || undefined,
+        categoryName: String(data.categoryName || categoryNames.get(categoryId) || directCategoryName || "Other"),
+        description: String(data.description || ""),
+        imageUrl: String(data.imageUrl || data.image || ""),
+        available: data.available !== false && data.isAvailable !== false && data.active !== false,
+        variants: variantsFromDish(data),
+        productType: "dish" as const
+      };
+    });
+    const comboItems = combos.map(({ id, data }) => {
+      const categoryId = String(data.categoryId || "");
+      return {
+        id: `combo-${id}`,
+        name: String(data.name || data.title || data.comboName || "Unnamed combo"),
+        categoryId: categoryId || undefined,
+        categoryName: String(data.categoryName || categoryNames.get(categoryId) || data.category || "Combos"),
+        description: comboDescription(data),
+        imageUrl: String(data.imageUrl || data.image || data.photoUrl || ""),
+        available: data.available !== false && data.isAvailable !== false && data.active !== false && data.enabled !== false,
+        variants: variantsFromCombo(data),
+        productType: "combo" as const
+      };
+    });
     callback(
-      dishes
-        .map(({ id, data }) => {
-          const categoryId = String(data.categoryId || "");
-          const directCategoryName = typeof data.category === "string" ? data.category : "";
-          return {
-            id,
-            name: String(data.name || data.title || data.productName || "Unnamed item"),
-            categoryId: categoryId || undefined,
-            categoryName: String(data.categoryName || categoryNames.get(categoryId) || directCategoryName || "Other"),
-            description: String(data.description || ""),
-            imageUrl: String(data.imageUrl || data.image || ""),
-            available: data.available !== false && data.isAvailable !== false && data.active !== false,
-            variants: variantsFromDish(data)
-          };
-        })
+      [...dishItems, ...comboItems]
         .filter((item) => item.available)
         .sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.name.localeCompare(b.name))
     );
@@ -122,9 +162,19 @@ export function subscribeRestaurantMenu(
     (error) => onError(error)
   );
 
+  const unsubscribeCombos = onSnapshot(
+    collection(database, "combos"),
+    (snapshot) => {
+      combos = snapshot.docs.map((combo) => ({ id: combo.id, data: combo.data() }));
+      publish();
+    },
+    (error) => onError(error)
+  );
+
   return () => {
     unsubscribeCategories();
     unsubscribeDishes();
+    unsubscribeCombos();
   };
 }
 
@@ -181,6 +231,23 @@ export async function updateRestaurantOrderStatus(id: string, status: Restaurant
     action: "status_update",
     collectionName: "restaurantOrders",
     payload: { id, status },
+    createdAt: timestamp,
+    createdServerAt: serverTimestamp()
+  });
+}
+
+export async function updateRestaurantOrderPaymentStatus(id: string, paymentStatus: RestaurantPaymentStatus) {
+  const database = requireDb();
+  const timestamp = nowIso();
+  await updateDoc(doc(database, "restaurantOrders", id), withoutUndefined({
+    paymentStatus,
+    updatedAt: timestamp,
+    paidAt: paymentStatus === "Paid" ? timestamp : undefined
+  }));
+  await addDoc(collection(database, "auditLogs"), {
+    action: "payment_status_update",
+    collectionName: "restaurantOrders",
+    payload: { id, paymentStatus },
     createdAt: timestamp,
     createdServerAt: serverTimestamp()
   });

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toaster";
 import { useRestaurantOperations } from "@/hooks/use-restaurant-operations";
-import { createRestaurantOrder, updateRestaurantOrderStatus } from "@/services/restaurant-operations-service";
+import { createRestaurantOrder, updateRestaurantOrderPaymentStatus, updateRestaurantOrderStatus } from "@/services/restaurant-operations-service";
 import type {
   RestaurantCartCrust,
   RestaurantCartExtra,
@@ -90,6 +90,41 @@ function whatsappMessage(order: RestaurantOrder) {
     currency(order.totalAmount),
     "",
     "Please prepare this order."
+  ].join("\n");
+}
+
+function normalizeWhatsAppPhone(value?: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return `91${digits.slice(1)}`;
+  if (digits.length === 12 && digits.startsWith("91")) return digits;
+  return digits;
+}
+
+function customerWhatsappMessage(order: RestaurantOrder) {
+  const itemLines = order.items.map((item) => {
+    const extras = item.extras?.length ? `\n   Extras: ${item.extras.map((extra) => extra.name).join(", ")}` : "";
+    const crust = item.crustType || item.crust?.label ? `\n   Crust: ${item.crustType || item.crust?.label}` : "";
+    const notes = item.notes ? `\n   Note: ${item.notes}` : "";
+    return `${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size})` : ""}${crust}${extras}${notes}`;
+  }).join("\n");
+  return [
+    "MAGNEETOZ - ORDER DETAILS",
+    "",
+    `Order No: ${order.orderNumber}`,
+    `Time: ${localTime(order.createdAt)}`,
+    `Type: ${order.orderType}${order.tableNumber ? ` - ${order.tableNumber}` : ""}`,
+    "",
+    "Items:",
+    itemLines,
+    "",
+    `Payment: ${order.paymentMethod} - ${order.paymentStatus}`,
+    `Total: ${currency(order.totalAmount)}`,
+    "",
+    order.paymentStatus === "Unpaid" ? "Payment is pending. Please pay at delivery/counter." : "Payment received. Thank you!",
+    "",
+    "Thank you for ordering from MAGNEETOZ."
   ].join("\n");
 }
 
@@ -174,6 +209,8 @@ export default function RestaurantOperationsPage() {
   const discountAmount = useMemo(() => calculateOfferDiscount(cart, offerCode), [cart, offerCode]);
   const total = Math.max(0, subTotal - discountAmount);
   const activeOrders = orders.filter((order) => activeStatuses.includes(order.status));
+  const deliveredUnpaidOrders = orders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Unpaid");
+  const deliveredPaidOrders = orders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Paid");
   const historyOrders = useMemo(() => orders.filter((order) => {
     const search = historySearch.toLowerCase().trim();
     const textMatch = !search || `${order.orderNumber} ${order.customerName || ""} ${order.mobileNumber || ""}`.toLowerCase().includes(search);
@@ -194,6 +231,9 @@ export default function RestaurantOperationsPage() {
     delivered: deliveredSummaryOrders.length,
     cancelled: summaryOrders.filter((order) => order.status === "Cancelled").length,
     pending: summaryOrders.filter((order) => activeStatuses.includes(order.status)).length,
+    paidOrders: summaryOrders.filter((order) => order.paymentStatus === "Paid").length,
+    unpaidOrders: summaryOrders.filter((order) => order.paymentStatus === "Unpaid" && order.status !== "Cancelled").length,
+    unpaidAmount: summaryOrders.filter((order) => order.paymentStatus === "Unpaid" && order.status !== "Cancelled").reduce((sum, order) => sum + order.totalAmount, 0),
     discount: summaryOrders.reduce((sum, order) => sum + (order.discountAmount || 0), 0),
     itemsSold: summaryOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0)
   };
@@ -302,8 +342,27 @@ export default function RestaurantOperationsPage() {
     }
   }
 
+  async function changePaymentStatus(order: RestaurantOrder, paymentStatus: RestaurantPaymentStatus) {
+    try {
+      await updateRestaurantOrderPaymentStatus(order.id, paymentStatus);
+      toast({ title: `${order.orderNumber} payment marked ${paymentStatus}` });
+    } catch (value) {
+      toast({ title: "Payment update failed", description: value instanceof Error ? value.message : "Please try again." });
+    }
+  }
+
   function sendToCook(order: RestaurantOrder) {
     const url = `https://wa.me/919555173129?text=${encodeURIComponent(whatsappMessage(order))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function sendToCustomer(order: RestaurantOrder) {
+    const phone = normalizeWhatsAppPhone(order.mobileNumber);
+    if (!phone) {
+      toast({ title: "Customer mobile number required", description: "Number add karoge to yahi se customer ko order/KOT bhej sakte ho." });
+      return;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(customerWhatsappMessage(order))}`;
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -362,6 +421,9 @@ export default function RestaurantOperationsPage() {
     row("Delivered orders", summary.delivered);
     row("Cancelled orders", summary.cancelled);
     row("Pending orders", summary.pending);
+    row("Paid orders", summary.paidOrders);
+    row("Unpaid orders", summary.unpaidOrders);
+    row("Unpaid amount", money(summary.unpaidAmount));
     row("Total items sold", summary.itemsSold);
     row("Total revenue", money(summary.revenue));
     row("Cash collection", money(summary.cash));
@@ -454,8 +516,12 @@ export default function RestaurantOperationsPage() {
                 <div className="grid gap-3 md:grid-cols-2">
                   {filteredMenu.map((item) => (
                     <div key={item.id} className="rounded-lg border border-white/10 bg-white/[.03] p-4">
-                      <p className="font-medium">{item.name}</p>
-                      <p className="mb-3 text-xs text-muted-foreground">{item.categoryName}</p>
+                      <div className="mb-1 flex items-start justify-between gap-2">
+                        <p className="font-medium">{item.name}</p>
+                        {item.productType === "combo" ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Combo</span> : null}
+                      </div>
+                      <p className="mb-1 text-xs text-muted-foreground">{item.categoryName}</p>
+                      {item.description ? <p className="mb-3 text-xs text-muted-foreground line-clamp-2">{item.description}</p> : <div className="mb-3" />}
                       <p className="mb-2 text-xs font-medium text-muted-foreground">3. Choose size</p>
                       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                         {item.variants.map((variant, index) => <Button key={`${variant.name}-${index}`} type="button" size="sm" variant="outline" onClick={() => addMenuItem(item, index)}>{variant.name !== "Standard" ? `${variant.name} · ` : ""}{currency(variant.price)}</Button>)}
@@ -545,14 +611,33 @@ export default function RestaurantOperationsPage() {
                   <Button className="h-11 sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Sending to kitchen..." : "Save Order & Send to Kitchen"}</Button>
                 </CardContent>
               </Card>
-              {selectedOrder ? <Card className="border-primary/40"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{selectedOrder.orderNumber} is ready</p><p className="text-sm text-muted-foreground">Print the kitchen ticket or send it to the cook.</p></div><div className="grid gap-2 sm:flex"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></CardContent></Card> : null}
+              {selectedOrder ? <Card className="border-primary/40"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{selectedOrder.orderNumber} is ready</p><p className="text-sm text-muted-foreground">Print the kitchen ticket, send it to the cook, or WhatsApp the customer.</p></div><div className="grid gap-2 sm:flex sm:flex-wrap"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" variant="outline" onClick={() => sendToCustomer(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Customer</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></CardContent></Card> : null}
             </div>
           </form>
         ) : null}
 
         {section === "active" ? (
-          <div className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-            {!activeOrders.length && !loading ? <Card><CardContent className="p-8 text-center text-muted-foreground">No active orders.</CardContent></Card> : null}
+          <div className="space-y-4">
+            {deliveredUnpaidOrders.length ? (
+              <Card className="border-amber-500/40 bg-amber-500/5">
+                <CardHeader><CardTitle>Delivered but payment pending ({deliveredUnpaidOrders.length})</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {deliveredUnpaidOrders.map((order) => (
+                    <div key={order.id} className="rounded-lg border border-amber-500/20 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{order.orderNumber}</p><p className="text-muted-foreground">{order.customerName || "Walk-in"}{order.mobileNumber ? ` · ${order.mobileNumber}` : ""}</p></div><b>{currency(order.totalAmount)}</b></div>
+                      <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
+                        <Button size="sm" onClick={() => changePaymentStatus(order, "Paid")}>Mark Paid</Button>
+                        <Button size="sm" variant="outline" onClick={() => sendToCustomer(order)}><MessageCircle className="h-4 w-4" />Customer WhatsApp</Button>
+                        <Button size="sm" variant="outline" onClick={() => printOrder(order)}><Printer className="h-4 w-4" />KOT</Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            <div className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            {!activeOrders.length && !loading ? <Card><CardContent className="p-8 text-center text-muted-foreground">No active kitchen orders. Paid delivered: {deliveredPaidOrders.length}</CardContent></Card> : null}
             {activeOrders.map((order) => (
               <Card key={order.id}>
                 <CardContent className="space-y-4 p-5">
@@ -565,13 +650,16 @@ export default function RestaurantOperationsPage() {
                     {order.status === "New Order" ? <Button size="sm" onClick={() => changeStatus(order, "In Kitchen")}>Start Kitchen</Button> : null}
                     {order.status === "In Kitchen" ? <Button size="sm" onClick={() => changeStatus(order, "Ready")}>Mark Ready</Button> : null}
                     {order.status === "Ready" ? <Button size="sm" onClick={() => changeStatus(order, "Delivered")}>Mark Delivered</Button> : null}
+                    {order.paymentStatus === "Unpaid" ? <Button size="sm" variant="secondary" onClick={() => changePaymentStatus(order, "Paid")}>Mark Paid</Button> : null}
                     <Button size="sm" variant="outline" onClick={() => sendToCook(order)}><MessageCircle className="h-4 w-4" />Send to Cook</Button>
+                    <Button size="sm" variant="outline" onClick={() => sendToCustomer(order)}><MessageCircle className="h-4 w-4" />Customer</Button>
                     <Button size="sm" variant="outline" onClick={() => printOrder(order)}><Printer className="h-4 w-4" />KOT</Button>
                     <Button size="sm" variant="ghost" className="text-destructive" onClick={() => changeStatus(order, "Cancelled")}>Cancel</Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
+            </div>
           </div>
         ) : null}
 
@@ -584,8 +672,18 @@ export default function RestaurantOperationsPage() {
                 <Input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
                 <Select value={historyStatus} onValueChange={setHistoryStatus}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem>{statuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select>
                 <Button className="w-full" variant="outline" onClick={() => { setHistorySearch(""); setHistoryDate(""); setHistoryStatus("all"); setHistoryPayment("all"); setHistoryType("all"); }}>Clear filters</Button>
-                <Select value={historyPayment} onValueChange={setHistoryPayment}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payments</SelectItem><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select>
+                <Select value={historyPayment} onValueChange={setHistoryPayment}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payment methods</SelectItem><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select>
                 <Select value={historyType} onValueChange={setHistoryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All order types</SelectItem><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem></SelectContent></Select>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-4">
+                  <p className="text-sm text-muted-foreground">Delivered + Paid</p>
+                  <p className="mt-1 text-2xl font-semibold">{historyOrders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Paid").length} orders</p>
+                </div>
+                <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4">
+                  <p className="text-sm text-muted-foreground">Delivered + Payment Pending</p>
+                  <p className="mt-1 text-2xl font-semibold">{historyOrders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Unpaid").length} orders · {currency(historyOrders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Unpaid").reduce((sum, order) => sum + order.totalAmount, 0))}</p>
+                </div>
               </div>
               <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
                 <table className="w-full min-w-[850px] text-sm">
@@ -620,6 +718,9 @@ export default function RestaurantOperationsPage() {
                 ["Delivered Orders", summary.delivered],
                 ["Cancelled Orders", summary.cancelled],
                 ["Pending Orders", summary.pending],
+                ["Paid Orders", summary.paidOrders],
+                ["Unpaid Orders", summary.unpaidOrders],
+                ["Unpaid Amount", currency(summary.unpaidAmount)],
                 ["Items Sold", summary.itemsSold],
                 ["Offer Discounts", currency(summary.discount)],
                 ["Top Dish", itemSales[0] ? `${itemSales[0].name} (${itemSales[0].quantity})` : "No sales"]
