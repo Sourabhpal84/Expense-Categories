@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { ChefHat, Clock3, Download, History, MessageCircle, Plus, Printer, Search, ShoppingCart, Trash2, TrendingUp } from "lucide-react";
+import { CheckCircle2, ChefHat, Clock3, Download, History, MessageCircle, Minus, Plus, Printer, Search, ShoppingCart, Trash2, TrendingUp } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { KitchenTicket } from "@/components/restaurant/kitchen-ticket";
 import { Button } from "@/components/ui/button";
@@ -174,6 +174,7 @@ export default function RestaurantOperationsPage() {
   const [section, setSection] = useState<Section>("new");
   const [saving, setSaving] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RestaurantOrder | null>(null);
+  const [recentlyAddedKey, setRecentlyAddedKey] = useState("");
   const [menuSearch, setMenuSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [cart, setCart] = useState<RestaurantOrderItem[]>([]);
@@ -264,14 +265,24 @@ export default function RestaurantOperationsPage() {
     return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue);
   }, [itemSales]);
 
+  function cartQuantityFor(menuItemId: string, size?: string) {
+    return cart
+      .filter((line) => line.menuItemId === menuItemId && (!size || line.size === size))
+      .reduce((sum, line) => sum + line.quantity, 0);
+  }
+
   function addMenuItem(item: RestaurantMenuItem, variantIndex: number) {
     const variant = item.variants[variantIndex] || item.variants[0];
+    const addedKey = `${item.id}-${variant.name}`;
     const existingIndex = cart.findIndex((line) => line.menuItemId === item.id && line.size === variant.name && !line.notes && !line.extras?.length && (line.selectedCrust || defaultCrust.id) === defaultCrust.id);
     if (existingIndex >= 0) {
       setCart(cart.map((line, index) => index === existingIndex ? normalizeCartLine({ ...line, quantity: line.quantity + 1 }) : line));
-      return;
+    } else {
+      setCart([...cart, normalizeCartLine({ menuItemId: item.id, name: item.name, categoryName: item.categoryName, size: variant.name, baseUnitPrice: variant.price, unitPrice: variant.price, quantity: 1, extras: [], addOns: [], extrasTotal: 0, crust: defaultCrust, crustType: defaultCrust.label, selectedCrust: defaultCrust.id, lineTotal: variant.price })]);
     }
-    setCart([...cart, normalizeCartLine({ menuItemId: item.id, name: item.name, categoryName: item.categoryName, size: variant.name, baseUnitPrice: variant.price, unitPrice: variant.price, quantity: 1, extras: [], addOns: [], extrasTotal: 0, crust: defaultCrust, crustType: defaultCrust.label, selectedCrust: defaultCrust.id, lineTotal: variant.price })]);
+    setRecentlyAddedKey(addedKey);
+    setTimeout(() => setRecentlyAddedKey((current) => current === addedKey ? "" : current), 1200);
+    toast({ title: `${item.name} added`, description: `${variant.name !== "Standard" ? `${variant.name} · ` : ""}${currency(variant.price)} cart mein add ho gaya.` });
   }
 
   function updateCart(index: number, patch: Partial<RestaurantOrderItem>) {
@@ -279,6 +290,17 @@ export default function RestaurantOperationsPage() {
       if (itemIndex !== index) return item;
       return normalizeCartLine({ ...item, ...patch });
     }));
+  }
+
+  function changeCartQuantity(index: number, delta: number) {
+    const line = cart[index];
+    if (!line) return;
+    const nextQuantity = Math.max(0, Number(line.quantity || 0) + delta);
+    if (nextQuantity === 0) {
+      setCart(cart.filter((_, itemIndex) => itemIndex !== index));
+      return;
+    }
+    updateCart(index, { quantity: nextQuantity });
   }
 
   function setCartCrust(index: number, crustId: string) {
@@ -514,11 +536,17 @@ export default function RestaurantOperationsPage() {
                 {loading ? <p className="py-10 text-center text-muted-foreground">Loading live menu...</p> : null}
                 {!loading && !filteredMenu.length ? <p className="py-10 text-center text-muted-foreground">No items found for this category/search.</p> : null}
                 <div className="grid gap-3 md:grid-cols-2">
-                  {filteredMenu.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-white/10 bg-white/[.03] p-4">
+                  {filteredMenu.map((item) => {
+                    const addedQuantity = cartQuantityFor(item.id);
+                    const recentlyAddedItem = recentlyAddedKey.startsWith(`${item.id}-`);
+                    return (
+                    <div key={item.id} className={`rounded-lg border p-4 transition-all ${recentlyAddedItem ? "ring-2 ring-emerald-300" : ""} ${addedQuantity ? "border-primary/60 bg-primary/10 shadow-[0_0_0_1px_rgba(0,204,255,.25)]" : "border-white/10 bg-white/[.03]"}`}>
                       <div className="mb-1 flex items-start justify-between gap-2">
                         <p className="font-medium">{item.name}</p>
-                        {item.productType === "combo" ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Combo</span> : null}
+                        <div className="flex shrink-0 items-center gap-1">
+                          {addedQuantity ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground"><CheckCircle2 className="h-3 w-3" />Added {addedQuantity}</span> : null}
+                          {item.productType === "combo" ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Combo</span> : null}
+                        </div>
                       </div>
                       <p className="mb-1 text-xs text-muted-foreground">{item.categoryName}</p>
                       {item.description ? <p className="mb-3 text-xs text-muted-foreground line-clamp-2">{item.description}</p> : <div className="mb-3" />}
@@ -527,7 +555,8 @@ export default function RestaurantOperationsPage() {
                         {item.variants.map((variant, index) => <Button key={`${variant.name}-${index}`} type="button" size="sm" variant="outline" onClick={() => addMenuItem(item, index)}>{variant.name !== "Standard" ? `${variant.name} · ` : ""}{currency(variant.price)}</Button>)}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -583,7 +612,14 @@ export default function RestaurantOperationsPage() {
                         {(item.extras || []).map((extra) => <div key={extra.id} className="flex justify-between text-muted-foreground"><span>{extra.name}</span><b>{currency(extra.price * item.quantity)}</b></div>)}
                         {(item.extrasTotal || 0) > 0 ? <div className="flex justify-between border-t border-white/10 pt-2 font-semibold"><span>Item total</span><b>{currency(item.lineTotal)}</b></div> : null}
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-[90px_1fr]"><Input type="number" min="1" value={item.quantity} onChange={(event) => updateCart(index, { quantity: Number(event.target.value) })} /><Input value={item.notes || ""} onChange={(event) => updateCart(index, { notes: event.target.value })} placeholder="Item instructions" /></div>
+                      <div className="grid gap-2 sm:grid-cols-[150px_1fr]">
+                        <div className="flex h-10 items-center overflow-hidden rounded-md border border-border bg-white/[.03]">
+                          <Button type="button" size="icon" variant="ghost" className="h-10 rounded-none" onClick={() => changeCartQuantity(index, -1)} aria-label="Decrease quantity"><Minus className="h-4 w-4" /></Button>
+                          <Input className="h-10 border-0 bg-transparent text-center font-semibold focus-visible:ring-0" type="number" min="1" value={item.quantity} onChange={(event) => updateCart(index, { quantity: Number(event.target.value) })} />
+                          <Button type="button" size="icon" variant="ghost" className="h-10 rounded-none" onClick={() => changeCartQuantity(index, 1)} aria-label="Increase quantity"><Plus className="h-4 w-4" /></Button>
+                        </div>
+                        <Input value={item.notes || ""} onChange={(event) => updateCart(index, { notes: event.target.value })} placeholder="Item instructions" />
+                      </div>
                     </div>
                   ))}
                   <div className="space-y-2"><Label>Order notes / special instructions</Label><Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
