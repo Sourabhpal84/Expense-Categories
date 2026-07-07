@@ -128,6 +128,123 @@ function customerWhatsappMessage(order: RestaurantOrder) {
   ].join("\n");
 }
 
+type OrderImageAudience = "cook" | "customer";
+
+function orderImageLines(order: RestaurantOrder, audience: OrderImageAudience) {
+  return [
+    audience === "cook" ? "MAGNEETOZ - KITCHEN ORDER" : "MAGNEETOZ - ORDER DETAILS",
+    "",
+    `Order No: ${order.orderNumber}`,
+    `Time: ${localTime(order.createdAt)}`,
+    `Type: ${order.orderType}${order.tableNumber ? ` - ${order.tableNumber}` : ""}`,
+    ...(order.customerName && audience === "customer" ? [`Customer: ${order.customerName}`] : []),
+    "",
+    "Items:",
+    ...order.items.flatMap((item, index) => {
+      const lines = [`${index + 1}. ${item.quantity} x ${item.name}${item.size && item.size !== "Standard" ? ` (${item.size})` : ""}`];
+      if (item.crustType || item.crust?.label) lines.push(`   Crust: ${item.crustType || item.crust?.label}`);
+      if (item.extras?.length) lines.push(`   Extras: ${item.extras.map((extra) => `${extra.name} +${currency(extra.price)}`).join(", ")}`);
+      if (item.notes) lines.push(`   Note: ${item.notes}`);
+      return lines;
+    }),
+    "",
+    ...(order.notes ? ["Order Notes:", order.notes, ""] : []),
+    ...(order.offerCode && order.offerCode !== "NONE" ? [`Offer: ${order.offerLabel || order.offerCode}`, `Discount: -${currency(order.discountAmount || 0)}`, ""] : []),
+    `Payment: ${order.paymentMethod} - ${order.paymentStatus}`,
+    `Total: ${currency(order.totalAmount)}`,
+    "",
+    audience === "cook"
+      ? "Please prepare this order."
+      : order.paymentStatus === "Unpaid"
+        ? "Payment is pending. Please pay at delivery/counter."
+        : "Payment received. Thank you!",
+    ...(audience === "customer" ? ["", "Thank you for ordering from MAGNEETOZ."] : [])
+  ];
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (!text) return [""];
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  words.forEach((word) => {
+    const test = current ? `${current} ${word}` : word;
+    if (context.measureText(test).width <= maxWidth) {
+      current = test;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+async function createOrderImageFile(order: RestaurantOrder, audience: OrderImageAudience) {
+  const width = 900;
+  const padding = 52;
+  const lineHeight = 28;
+  const lines = orderImageLines(order, audience);
+  const measureCanvas = document.createElement("canvas");
+  const measureContext = measureCanvas.getContext("2d");
+  if (!measureContext) throw new Error("Image generator is not available in this browser.");
+  measureContext.font = "22px Arial";
+  const wrappedLines = lines.flatMap((line) => wrapCanvasText(measureContext, line, width - padding * 2));
+  const height = Math.max(720, padding * 2 + wrappedLines.length * lineHeight + 140);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Image generator is not available in this browser.");
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#0f172a";
+  context.font = "bold 34px Arial";
+  context.fillText("MAGNEETOZ", padding, padding);
+  context.font = "18px Arial";
+  context.fillStyle = "#475569";
+  context.fillText(audience === "cook" ? "Kitchen Order Ticket" : "Customer Order Copy", padding, padding + 32);
+  context.strokeStyle = "#0ea5e9";
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(padding, padding + 56);
+  context.lineTo(width - padding, padding + 56);
+  context.stroke();
+
+  let y = padding + 100;
+  wrappedLines.forEach((line, index) => {
+    const rawLine = lines[index] || line;
+    const isTitle = line.includes("MAGNEETOZ -");
+    const isImportant = line.startsWith("Order No:") || line.startsWith("Total:") || line === "Items:";
+    context.font = isTitle ? "bold 30px Arial" : isImportant ? "bold 24px Arial" : "22px Arial";
+    context.fillStyle = isTitle ? "#0f172a" : isImportant ? "#111827" : "#334155";
+    context.fillText(line, padding, y);
+    y += isTitle ? 40 : line ? lineHeight : 18;
+    if (rawLine === "Items:") y += 6;
+  });
+
+  context.fillStyle = "#64748b";
+  context.font = "16px Arial";
+  context.fillText(`Generated ${new Date().toLocaleString("en-IN")}`, padding, height - 42);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not create order image.")), "image/png", 1);
+  });
+  return new File([blob], `${order.orderNumber}-${audience === "cook" ? "KOT" : "Customer"}-MAGNEETOZ.png`, { type: "image/png" });
+}
+
+function downloadOrderImage(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function calculateOfferDiscount(items: RestaurantOrderItem[], offerCode: RestaurantOfferCode) {
   const unitPrices = items.flatMap((item) => Array.from({ length: Math.max(0, item.quantity) }, () => item.unitPrice + (item.extrasTotal || 0))).sort((a, b) => a - b);
   if (offerCode === "OBGO") {
@@ -373,9 +490,31 @@ export default function RestaurantOperationsPage() {
     }
   }
 
+  async function shareOrderImage(order: RestaurantOrder, audience: OrderImageAudience, phone?: string) {
+    try {
+      const file = await createOrderImageFile(order, audience);
+      const sharePayload = {
+        title: `${order.orderNumber} MAGNEETOZ`,
+        text: audience === "cook" ? "MAGNEETOZ kitchen order image" : "MAGNEETOZ order image",
+        files: [file]
+      };
+      if (navigator.canShare?.(sharePayload)) {
+        await navigator.share(sharePayload);
+        return;
+      }
+      downloadOrderImage(file);
+      if (phone) window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+      toast({
+        title: "Order image downloaded",
+        description: "WhatsApp image auto-attach desktop browser me allowed nahi hota. Downloaded PNG ko WhatsApp chat me attach kar do."
+      });
+    } catch (value) {
+      toast({ title: "Image share failed", description: value instanceof Error ? value.message : "Please try again." });
+    }
+  }
+
   function sendToCook(order: RestaurantOrder) {
-    const url = `https://wa.me/919555173129?text=${encodeURIComponent(whatsappMessage(order))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    void shareOrderImage(order, "cook", "919555173129");
   }
 
   function sendToCustomer(order: RestaurantOrder) {
@@ -384,8 +523,7 @@ export default function RestaurantOperationsPage() {
       toast({ title: "Customer mobile number required", description: "Number add karoge to yahi se customer ko order/KOT bhej sakte ho." });
       return;
     }
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(customerWhatsappMessage(order))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    void shareOrderImage(order, "customer", phone);
   }
 
   function printOrder(order: RestaurantOrder) {
