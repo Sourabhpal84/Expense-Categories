@@ -491,24 +491,25 @@ export default function RestaurantOperationsPage() {
   }
 
   async function shareOrderImage(order: RestaurantOrder, audience: OrderImageAudience, phone?: string) {
+    const caption = encodeURIComponent(audience === "cook"
+      ? `MAGNEETOZ - KOT ${order.orderNumber}. Image downloaded, please attach/send.`
+      : `MAGNEETOZ - Order ${order.orderNumber}. Image downloaded, please attach/send.`);
+    const whatsappUrl = phone ? `https://wa.me/${phone}?text=${caption}` : "";
+    const whatsappWindow = whatsappUrl ? window.open("about:blank", "_blank", "noopener,noreferrer") : null;
     try {
       const file = await createOrderImageFile(order, audience);
-      const sharePayload = {
-        title: `${order.orderNumber} MAGNEETOZ`,
-        text: audience === "cook" ? "MAGNEETOZ kitchen order image" : "MAGNEETOZ order image",
-        files: [file]
-      };
-      if (navigator.canShare?.(sharePayload)) {
-        await navigator.share(sharePayload);
-        return;
-      }
       downloadOrderImage(file);
-      if (phone) window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+      if (whatsappWindow && whatsappUrl) {
+        whatsappWindow.location.href = whatsappUrl;
+      } else if (whatsappUrl) {
+        window.location.href = whatsappUrl;
+      }
       toast({
-        title: "Order image downloaded",
-        description: "WhatsApp image auto-attach desktop browser me allowed nahi hota. Downloaded PNG ko WhatsApp chat me attach kar do."
+        title: "WhatsApp chat opened",
+        description: "Order image download ho gayi hai. WhatsApp chat me image attach karke send kar do."
       });
     } catch (value) {
+      whatsappWindow?.close();
       toast({ title: "Image share failed", description: value instanceof Error ? value.message : "Please try again." });
     }
   }
