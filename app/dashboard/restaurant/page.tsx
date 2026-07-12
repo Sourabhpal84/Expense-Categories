@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useMemo, useState } from "react";
 import { CheckCircle2, ChefHat, Clock3, Download, History, MessageCircle, Minus, Plus, Printer, Search, ShoppingCart, Trash2, TrendingUp } from "lucide-react";
@@ -484,7 +484,7 @@ export default function RestaurantOperationsPage() {
 
     sectionTitle("Business Summary");
     row("Total orders", summary.totalOrders);
-    row("Delivered orders", summary.delivered);
+    row("Completed orders", summary.delivered);
     row("Cancelled orders", summary.cancelled);
     row("Pending orders", summary.pending);
     row("Paid orders", summary.paidOrders);
@@ -704,7 +704,7 @@ export default function RestaurantOperationsPage() {
           <div className="space-y-4">
             {deliveredUnpaidOrders.length ? (
               <Card className="border-amber-500/40 bg-amber-500/5">
-                <CardHeader><CardTitle>Delivered but payment pending ({deliveredUnpaidOrders.length})</CardTitle></CardHeader>
+                <CardHeader><CardTitle>Completed but payment pending ({deliveredUnpaidOrders.length})</CardTitle></CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {deliveredUnpaidOrders.map((order) => (
                     <div key={order.id} className="rounded-lg border border-amber-500/20 p-3 text-sm">
@@ -721,7 +721,7 @@ export default function RestaurantOperationsPage() {
             ) : null}
 
             <div className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-            {!activeOrders.length && !loading ? <Card><CardContent className="p-8 text-center text-muted-foreground">No active kitchen orders. Paid delivered: {deliveredPaidOrders.length}</CardContent></Card> : null}
+            {!activeOrders.length && !loading ? <Card><CardContent className="p-8 text-center text-muted-foreground">No active kitchen orders. Paid completed: {deliveredPaidOrders.length}</CardContent></Card> : null}
             {activeOrders.map((order) => (
               <Card key={order.id}>
                 <CardContent className="space-y-4 p-5">
@@ -781,17 +781,17 @@ export default function RestaurantOperationsPage() {
                 <Input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
                 <Select value={historyStatus} onValueChange={setHistoryStatus}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem>{statuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select>
                 <Button className="w-full" variant="outline" onClick={() => { setHistorySearch(""); setHistoryDate(""); setHistoryStatus("all"); setHistoryPayment("all"); setHistoryType("all"); }}>Clear filters</Button>
-                <Select value={historyPayment} onValueChange={setHistoryPayment}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payment methods</SelectItem><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select>
-                <Select value={historyType} onValueChange={setHistoryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All order types</SelectItem><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem></SelectContent></Select>
+                <Select value={historyPayment} onValueChange={setHistoryPayment}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payment methods</SelectItem><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem><SelectItem value="Card">Card</SelectItem><SelectItem value="Online payment">Online payment</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select>
+                <Select value={historyType} onValueChange={setHistoryType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All order types</SelectItem><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem><SelectItem value="Delivery">Delivery</SelectItem></SelectContent></Select>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-4">
-                  <p className="text-sm text-muted-foreground">Delivered + Paid</p>
-                  <p className="mt-1 text-2xl font-semibold">{historyOrders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Paid").length} orders</p>
+                  <p className="text-sm text-muted-foreground">Completed + Paid</p>
+                  <p className="mt-1 text-2xl font-semibold">{historyOrders.filter((order) => isCompleted(order.status) && order.paymentStatus === "Paid").length} orders</p>
                 </div>
                 <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4">
-                  <p className="text-sm text-muted-foreground">Delivered + Payment Pending</p>
-                  <p className="mt-1 text-2xl font-semibold">{historyOrders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Unpaid").length} orders · {currency(historyOrders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Unpaid").reduce((sum, order) => sum + order.totalAmount, 0))}</p>
+                  <p className="text-sm text-muted-foreground">Completed + Payment Pending</p>
+                  <p className="mt-1 text-2xl font-semibold">{historyOrders.filter((order) => isCompleted(order.status) && order.paymentStatus !== "Paid").length} orders · {currency(historyOrders.filter((order) => isCompleted(order.status) && order.paymentStatus !== "Paid").reduce((sum, order) => sum + Number(order.pendingAmount || order.totalAmount), 0))}</p>
                 </div>
               </div>
               <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -824,7 +824,7 @@ export default function RestaurantOperationsPage() {
                 ["Total Revenue", currency(summary.revenue)],
                 ["Cash Collection", currency(summary.cash)],
                 ["UPI Collection", currency(summary.upi)],
-                ["Delivered Orders", summary.delivered],
+                ["Completed Orders", summary.delivered],
                 ["Cancelled Orders", summary.cancelled],
                 ["Pending Orders", summary.pending],
                 ["Paid Orders", summary.paidOrders],
@@ -869,3 +869,6 @@ export default function RestaurantOperationsPage() {
     </>
   );
 }
+
+
+
