@@ -35,6 +35,18 @@ service cloud.firestore {
       return isAdmin() || userRole() == role;
     }
 
+    function staffOwnerId() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.ownerUserId
+        : "";
+    }
+
+    function canAccessRestaurantUser(resourceUserId) {
+      return owns(resourceUserId)
+        || isAdmin()
+        || (hasRole("kitchenStaff") && staffOwnerId() == resourceUserId);
+    }
+
     function isApprovedRider() {
       return signedIn()
         && exists(/databases/$(database)/documents/riders/$(request.auth.uid))
@@ -565,9 +577,22 @@ service cloud.firestore {
     }
 
     match /restaurantOrders/{documentId} {
-      allow read: if owns(resource.data.userId);
-      allow create: if owns(request.resource.data.userId);
-      allow update, delete: if owns(resource.data.userId);
+      allow read: if canAccessRestaurantUser(resource.data.userId);
+      allow create: if canAccessRestaurantUser(request.resource.data.userId);
+      allow update: if canAccessRestaurantUser(resource.data.userId);
+      allow delete: if isAdmin();
+    }
+
+    match /restaurantOrderStatusHistory/{documentId} {
+      allow read: if canAccessRestaurantUser(resource.data.userId) || canAccessRestaurantUser(get(/databases/$(database)/documents/restaurantOrders/$(resource.data.orderId)).data.userId);
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /restaurantPaymentHistory/{documentId} {
+      allow read: if canAccessRestaurantUser(resource.data.userId);
+      allow create: if canAccessRestaurantUser(request.resource.data.userId);
+      allow update, delete: if false;
     }
 
     match /dailySessions/{documentId} {

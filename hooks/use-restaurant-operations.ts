@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { db } from "@/firebase/config";
+import { doc, getDoc } from "firebase/firestore";
 import { subscribeRestaurantMenu, subscribeRestaurantOrders } from "@/services/restaurant-operations-service";
 import type { RestaurantMenuItem, RestaurantOrder } from "@/types";
 
@@ -36,14 +38,26 @@ export function useRestaurantOperations() {
       setMenu(items);
       setLoadingMenu(false);
     }, reportMenuError);
-    const unsubscribeOrders = user
-      ? subscribeRestaurantOrders(user.uid, (items) => {
+    let unsubscribeOrders = () => undefined as void;
+    let cancelled = false;
+    if (user) {
+      void (async () => {
+        let orderUserId = user.uid;
+        if (db) {
+          const profile = await getDoc(doc(db, "users", user.uid)).catch(() => null);
+          const ownerUserId = profile?.data()?.ownerUserId;
+          if (typeof ownerUserId === "string" && ownerUserId) orderUserId = ownerUserId;
+        }
+        if (cancelled) return;
+        unsubscribeOrders = subscribeRestaurantOrders(orderUserId, (items) => {
           setOrders(items);
           setLoadingOrders(false);
-        }, reportOrderError)
-      : () => undefined;
+        }, reportOrderError);
+      })();
+    }
     if (!user) setLoadingOrders(false);
     return () => {
+      cancelled = true;
       unsubscribeMenu();
       unsubscribeOrders();
     };

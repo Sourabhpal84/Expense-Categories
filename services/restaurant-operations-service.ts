@@ -15,6 +15,7 @@ import type {
   RestaurantMenuVariant,
   RestaurantOrder,
   RestaurantPaymentStatus,
+  RestaurantPaymentMethod,
   RestaurantOrderStatus
 } from "@/types";
 
@@ -42,6 +43,77 @@ function withoutUndefined<T>(value: T): T {
     ) as T;
   }
   return value;
+}
+
+function canonicalStatus(status: RestaurantOrderStatus): RestaurantOrderStatus {
+  if (status === "New Order") return "New";
+  if (status === "In Kitchen") return "Preparing";
+  if (status === "Delivered") return "Completed";
+  return status;
+}
+
+function statusTimestampField(status: RestaurantOrderStatus) {
+  const normalized = canonicalStatus(status);
+  if (normalized === "Accepted") return "acceptedAt";
+  if (normalized === "Preparing") return "preparingAt";
+  if (normalized === "Ready") return "readyAt";
+  if (normalized === "Completed") return "completedAt";
+  if (normalized === "Cancelled") return "cancelledAt";
+  return "";
+}
+
+function normalizePayment(totalAmount: number, paymentStatus: RestaurantPaymentStatus, amountReceived = 0) {
+  const received = paymentStatus === "Paid" ? totalAmount : paymentStatus === "Partially paid" ? Math.min(totalAmount, Math.max(0, amountReceived)) : 0;
+  const pending = Math.max(0, totalAmount - received);
+  return {
+    amountReceived: received,
+    pendingAmount: pending,
+    paymentStatus: pending <= 0 ? "Paid" as RestaurantPaymentStatus : received > 0 ? "Partially paid" as RestaurantPaymentStatus : "Unpaid" as RestaurantPaymentStatus
+  };
+}
+
+function normalizeOrderPricing(input: Omit<RestaurantOrder, "id" | "orderNumber" | "createdAt" | "updatedAt">) {
+  let onionCount = 0;
+  const items = input.items.map((item) => {
+    const quantity = Math.max(1, Number(item.quantity || 1));
+    const isOnionPizza = item.name.trim().toLowerCase() === "onion pizza";
+    let lineBase = 0;
+    if (isOnionPizza) {
+      for (let index = 0; index < quantity; index += 1) {
+        onionCount += 1;
+        lineBase += onionCount === 1 ? 49 : 59;
+      }
+    } else {
+      lineBase = Number(item.unitPrice || 0) * quantity;
+    }
+    const extrasTotal = (item.extras || []).reduce((sum, extra) => sum + Number(extra.price || 0), 0);
+    const lineTotal = lineBase + extrasTotal * quantity;
+    return withoutUndefined({
+      ...item,
+      quantity,
+      baseUnitPrice: isOnionPizza ? (onionCount === 1 ? 49 : 59) : item.baseUnitPrice || item.unitPrice,
+      unitPrice: isOnionPizza ? lineBase / quantity : Number(item.unitPrice || 0),
+      extrasTotal,
+      lineTotal
+    });
+  });
+  const itemSubTotal = items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+  const discountAmount = Number(input.discountAmount || 0) + Number(input.manualDiscountAmount || 0);
+  const taxAmount = Number(input.taxAmount || 0);
+  const deliveryCharge = Number(input.deliveryCharge || 0);
+  const packagingCharge = Number(input.packagingCharge || 0);
+  const totalAmount = Math.max(0, itemSubTotal - discountAmount + taxAmount + deliveryCharge + packagingCharge);
+  const payment = normalizePayment(totalAmount, input.paymentStatus, input.amountReceived);
+  return {
+    items,
+    subTotal: itemSubTotal,
+    discountAmount,
+    taxAmount,
+    deliveryCharge,
+    packagingCharge,
+    totalAmount,
+    ...payment
+  };
 }
 
 function variantsFromDish(data: Record<string, unknown>): RestaurantMenuVariant[] {
@@ -196,10 +268,19 @@ export function subscribeRestaurantOrders(
   );
 }
 
+export function subscribeKitchenOrders(
+  userId: string,
+  callback: (orders: RestaurantOrder[]) => void,
+  onError: (error: Error) => void
+) {
+  return subscribeRestaurantOrders(userId, callback, onError);
+}
+
 export async function createRestaurantOrder(input: Omit<RestaurantOrder, "id" | "orderNumber" | "createdAt" | "updatedAt">) {
   const database = requireDb();
   const counterRef = doc(database, "counters", `restaurantOrders-${input.userId}`);
   const orderRef = doc(collection(database, "restaurantOrders"));
+  const pricing = normalizeOrderPricing(input);
 
   return runTransaction(database, async (transaction) => {
     const counter = await transaction.get(counterRef);
@@ -209,7 +290,12 @@ export async function createRestaurantOrder(input: Omit<RestaurantOrder, "id" | 
     transaction.set(counterRef, { value: next, userId: input.userId, updatedAt: timestamp }, { merge: true });
     transaction.set(orderRef, withoutUndefined({
       ...input,
+      ...pricing,
       orderNumber,
+      status: canonicalStatus(input.status || "New"),
+      priority: input.priority || "Normal",
+      createdBy: input.createdBy || input.userId,
+      updatedBy: input.updatedBy || input.userId,
       createdAt: timestamp,
       updatedAt: timestamp,
       createdServerAt: serverTimestamp()
@@ -218,37 +304,96 @@ export async function createRestaurantOrder(input: Omit<RestaurantOrder, "id" | 
   });
 }
 
-export async function updateRestaurantOrderStatus(id: string, status: RestaurantOrderStatus) {
+export async function updateRestaurantOrderStatus(id: string, status: RestaurantOrderStatus, actorId?: string, note?: string) {
   const database = requireDb();
   const timestamp = nowIso();
-  await updateDoc(doc(database, "restaurantOrders", id), {
-    status,
+  const normalized = canonicalStatus(status);
+  const timestampField = statusTimestampField(normalized);
+  await updateDoc(doc(database, "restaurantOrders", id), withoutUndefined({
+    status: normalized,
     updatedAt: timestamp,
-    ...(status === "Delivered" ? { deliveredAt: timestamp } : {}),
-    ...(status === "Cancelled" ? { cancelledAt: timestamp } : {})
-  });
+    updatedBy: actorId,
+    kitchenNotes: note || undefined,
+    ...(timestampField ? { [timestampField]: timestamp } : {})
+  }));
+  await addDoc(collection(database, "restaurantOrderStatusHistory"), withoutUndefined({
+    orderId: id,
+    status: normalized,
+    note,
+    actorId,
+    createdAt: timestamp,
+    createdServerAt: serverTimestamp()
+  }));
   await addDoc(collection(database, "auditLogs"), {
     action: "status_update",
     collectionName: "restaurantOrders",
-    payload: { id, status },
+    payload: { id, status: normalized },
     createdAt: timestamp,
     createdServerAt: serverTimestamp()
   });
 }
 
-export async function updateRestaurantOrderPaymentStatus(id: string, paymentStatus: RestaurantPaymentStatus) {
+export async function updateRestaurantOrderPaymentStatus(
+  id: string,
+  paymentStatus: RestaurantPaymentStatus,
+  amountReceived?: number,
+  paymentMethod?: RestaurantPaymentMethod,
+  actorId?: string
+) {
+  const database = requireDb();
+  const timestamp = nowIso();
+  await runTransaction(database, async (transaction) => {
+    const orderRef = doc(database, "restaurantOrders", id);
+    const orderSnap = await transaction.get(orderRef);
+    const order = orderSnap.data() as RestaurantOrder | undefined;
+    if (!order) throw new Error("Order not found.");
+    const payment = normalizePayment(Number(order.totalAmount || 0), paymentStatus, amountReceived);
+    transaction.update(orderRef, withoutUndefined({
+      ...payment,
+      paymentMethod: paymentMethod || order.paymentMethod,
+      updatedAt: timestamp,
+      updatedBy: actorId,
+      paidAt: payment.paymentStatus === "Paid" ? timestamp : order.paidAt
+    }));
+    transaction.set(doc(collection(database, "restaurantPaymentHistory")), withoutUndefined({
+      orderId: id,
+      orderNumber: order.orderNumber,
+      userId: order.userId,
+      paymentStatus: payment.paymentStatus,
+      paymentMethod: paymentMethod || order.paymentMethod,
+      amountReceived: payment.amountReceived,
+      pendingAmount: payment.pendingAmount,
+      actorId,
+      createdAt: timestamp,
+      createdServerAt: serverTimestamp()
+    }));
+    transaction.set(doc(collection(database, "auditLogs")), {
+      action: "payment_status_update",
+      collectionName: "restaurantOrders",
+      payload: { id, paymentStatus: payment.paymentStatus },
+      createdAt: timestamp,
+      createdServerAt: serverTimestamp()
+    });
+  });
+}
+
+export async function cancelRestaurantOrder(id: string, reason: string, refundStatus: string, actorId?: string) {
   const database = requireDb();
   const timestamp = nowIso();
   await updateDoc(doc(database, "restaurantOrders", id), withoutUndefined({
-    paymentStatus,
+    status: "Cancelled",
+    cancellationReason: reason,
+    refundStatus,
+    updatedBy: actorId,
     updatedAt: timestamp,
-    paidAt: paymentStatus === "Paid" ? timestamp : undefined
+    cancelledAt: timestamp
   }));
-  await addDoc(collection(database, "auditLogs"), {
-    action: "payment_status_update",
-    collectionName: "restaurantOrders",
-    payload: { id, paymentStatus },
+  await addDoc(collection(database, "restaurantOrderStatusHistory"), withoutUndefined({
+    orderId: id,
+    status: "Cancelled",
+    note: reason,
+    actorId,
     createdAt: timestamp,
     createdServerAt: serverTimestamp()
-  });
+  }));
 }

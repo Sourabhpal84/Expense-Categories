@@ -26,8 +26,9 @@ import type {
   RestaurantPaymentStatus
 } from "@/types";
 
-const statuses: RestaurantOrderStatus[] = ["New Order", "In Kitchen", "Ready", "Delivered", "Cancelled"];
-const activeStatuses: RestaurantOrderStatus[] = ["New Order", "In Kitchen", "Ready"];
+const statuses: RestaurantOrderStatus[] = ["New", "Accepted", "Preparing", "Ready", "Completed", "Cancelled"];
+const kitchenStatuses: RestaurantOrderStatus[] = ["New", "Accepted", "Preparing", "Ready", "Completed", "Cancelled"];
+const activeStatuses: RestaurantOrderStatus[] = ["New", "Accepted", "Preparing", "Ready", "New Order", "In Kitchen"];
 const currency = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 const localDate = (value: string) => new Date(value).toLocaleDateString("en-CA");
 const localTime = (value: string) => new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -51,14 +52,19 @@ const crustOptions: RestaurantCartCrust[] = [
 ];
 const defaultCrust = crustOptions.find((item) => item.id === "pan") || crustOptions[0];
 
-type Section = "new" | "active" | "history" | "summary";
+type Section = "new" | "active" | "payments" | "history" | "summary";
 
 function statusClass(status: RestaurantOrderStatus) {
+  if (status === "Accepted") return "bg-cyan-500/15 text-cyan-300";
   if (status === "Ready") return "bg-emerald-500/15 text-emerald-300";
-  if (status === "In Kitchen") return "bg-amber-500/15 text-amber-300";
-  if (status === "Delivered") return "bg-blue-500/15 text-blue-300";
+  if (status === "Preparing" || status === "In Kitchen") return "bg-amber-500/15 text-amber-300";
+  if (status === "Completed" || status === "Delivered") return "bg-blue-500/15 text-blue-300";
   if (status === "Cancelled") return "bg-red-500/15 text-red-300";
   return "bg-violet-500/15 text-violet-300";
+}
+
+function isCompleted(status: RestaurantOrderStatus) {
+  return status === "Completed" || status === "Delivered";
 }
 
 function whatsappMessage(order: RestaurantOrder) {
@@ -167,6 +173,13 @@ function normalizeCartLine(item: RestaurantOrderItem): RestaurantOrderItem {
   };
 }
 
+function progressSteps(order: RestaurantOrder) {
+  const current = order.status === "New Order" ? "New" : order.status === "In Kitchen" ? "Preparing" : order.status === "Delivered" ? "Completed" : order.status;
+  const steps: RestaurantOrderStatus[] = ["New", "Accepted", "Preparing", "Ready", "Completed"];
+  const currentIndex = steps.indexOf(current);
+  return { steps, currentIndex };
+}
+
 export default function RestaurantOperationsPage() {
   const { user, configured } = useAuth();
   const { menu, orders, loading, error, demoMode } = useRestaurantOperations();
@@ -184,8 +197,11 @@ export default function RestaurantOperationsPage() {
     mobileNumber: "",
     orderType: "Takeaway" as RestaurantOrderType,
     tableNumber: "",
+    deliveryAddress: "",
     paymentMethod: "Cash" as RestaurantPaymentMethod,
     paymentStatus: "Unpaid" as RestaurantPaymentStatus,
+    amountReceived: "",
+    priority: "Normal" as const,
     notes: ""
   });
   const [historySearch, setHistorySearch] = useState("");
@@ -194,6 +210,7 @@ export default function RestaurantOperationsPage() {
   const [historyPayment, setHistoryPayment] = useState("all");
   const [historyType, setHistoryType] = useState("all");
   const [summaryDate, setSummaryDate] = useState(localDate(new Date().toISOString()));
+  const [paymentFilter, setPaymentFilter] = useState<"today" | "yesterday" | "week">("today");
 
   const filteredMenu = useMemo(() => {
     const search = menuSearch.toLowerCase().trim();
@@ -210,8 +227,8 @@ export default function RestaurantOperationsPage() {
   const discountAmount = useMemo(() => calculateOfferDiscount(cart, offerCode), [cart, offerCode]);
   const total = Math.max(0, subTotal - discountAmount);
   const activeOrders = orders.filter((order) => activeStatuses.includes(order.status));
-  const deliveredUnpaidOrders = orders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Unpaid");
-  const deliveredPaidOrders = orders.filter((order) => order.status === "Delivered" && order.paymentStatus === "Paid");
+  const deliveredUnpaidOrders = orders.filter((order) => isCompleted(order.status) && order.paymentStatus !== "Paid");
+  const deliveredPaidOrders = orders.filter((order) => isCompleted(order.status) && order.paymentStatus === "Paid");
   const historyOrders = useMemo(() => orders.filter((order) => {
     const search = historySearch.toLowerCase().trim();
     const textMatch = !search || `${order.orderNumber} ${order.customerName || ""} ${order.mobileNumber || ""}`.toLowerCase().includes(search);
@@ -223,7 +240,27 @@ export default function RestaurantOperationsPage() {
   }), [historyDate, historyPayment, historySearch, historyStatus, historyType, orders]);
 
   const summaryOrders = orders.filter((order) => localDate(order.createdAt) === summaryDate);
-  const deliveredSummaryOrders = summaryOrders.filter((order) => order.status === "Delivered");
+  const paymentOrders = useMemo(() => {
+    const today = localDate(new Date().toISOString());
+    const yesterday = localDate(new Date(Date.now() - 86400000).toISOString());
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 6);
+    return orders.filter((order) => {
+      const date = localDate(order.createdAt);
+      if (paymentFilter === "today") return date === today;
+      if (paymentFilter === "yesterday") return date === yesterday;
+      return new Date(order.createdAt) >= weekStart;
+    });
+  }, [orders, paymentFilter]);
+  const paymentSummary = {
+    sales: paymentOrders.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + order.totalAmount, 0),
+    paid: paymentOrders.reduce((sum, order) => sum + Number(order.amountReceived || (order.paymentStatus === "Paid" ? order.totalAmount : 0)), 0),
+    unpaid: paymentOrders.filter((order) => order.paymentStatus === "Unpaid").reduce((sum, order) => sum + Number(order.pendingAmount || order.totalAmount), 0),
+    partial: paymentOrders.filter((order) => order.paymentStatus === "Partially paid").reduce((sum, order) => sum + Number(order.pendingAmount || 0), 0),
+    cash: paymentOrders.filter((order) => order.paymentMethod === "Cash").reduce((sum, order) => sum + Number(order.amountReceived || (order.paymentStatus === "Paid" ? order.totalAmount : 0)), 0),
+    upi: paymentOrders.filter((order) => order.paymentMethod === "UPI").reduce((sum, order) => sum + Number(order.amountReceived || (order.paymentStatus === "Paid" ? order.totalAmount : 0)), 0)
+  };
+  const deliveredSummaryOrders = summaryOrders.filter((order) => isCompleted(order.status));
   const summary = {
     totalOrders: summaryOrders.length,
     revenue: deliveredSummaryOrders.reduce((sum, order) => sum + order.totalAmount, 0),
@@ -323,6 +360,7 @@ export default function RestaurantOperationsPage() {
     if (!user || !configured) return toast({ title: "Firebase required", description: "Connect Firebase to save restaurant orders." });
     if (!cart.length) return toast({ title: "Add at least one item", description: "Select an item from the live menu." });
     if (form.orderType === "Dine In" && !form.tableNumber.trim()) return toast({ title: "Table number required" });
+    if (form.orderType === "Delivery" && !form.deliveryAddress.trim()) return toast({ title: "Delivery address required" });
     setSaving(true);
     try {
       const result = await createRestaurantOrder({
@@ -331,6 +369,7 @@ export default function RestaurantOperationsPage() {
         mobileNumber: form.mobileNumber.trim() || undefined,
         orderType: form.orderType,
         tableNumber: form.orderType === "Dine In" ? form.tableNumber.trim() : undefined,
+        deliveryAddress: form.orderType === "Delivery" ? form.deliveryAddress.trim() : undefined,
         items: cart,
         notes: form.notes.trim() || undefined,
         offerCode: offerCode === "NONE" ? undefined : offerCode,
@@ -339,15 +378,20 @@ export default function RestaurantOperationsPage() {
         subTotal,
         paymentMethod: form.paymentMethod,
         paymentStatus: form.paymentStatus,
+        amountReceived: form.paymentStatus === "Partially paid" ? Number(form.amountReceived || 0) : form.paymentStatus === "Paid" ? total : 0,
+        priority: form.priority,
         totalAmount: total,
-        status: "New Order"
+        status: "New",
+        createdBy: user.uid,
+        updatedBy: user.uid,
+        idempotencyKey: `${user.uid}-${Date.now()}`
       });
-      const printableOrder: RestaurantOrder = { id: result.id, orderNumber: result.orderNumber, userId: user.uid, ...form, tableNumber: form.orderType === "Dine In" ? form.tableNumber : undefined, items: cart, offerCode: offerCode === "NONE" ? undefined : offerCode, offerLabel: offerCode === "NONE" ? undefined : offerLabels[offerCode], discountAmount: discountAmount || undefined, subTotal, totalAmount: total, status: "New Order", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const printableOrder: RestaurantOrder = { id: result.id, orderNumber: result.orderNumber, userId: user.uid, ...form, amountReceived: form.paymentStatus === "Partially paid" ? Number(form.amountReceived || 0) : form.paymentStatus === "Paid" ? total : 0, pendingAmount: form.paymentStatus === "Paid" ? 0 : Math.max(0, total - Number(form.amountReceived || 0)), tableNumber: form.orderType === "Dine In" ? form.tableNumber : undefined, deliveryAddress: form.orderType === "Delivery" ? form.deliveryAddress : undefined, items: cart, offerCode: offerCode === "NONE" ? undefined : offerCode, offerLabel: offerCode === "NONE" ? undefined : offerLabels[offerCode], discountAmount: discountAmount || undefined, subTotal, totalAmount: total, status: "New", priority: form.priority, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       setSelectedOrder(printableOrder);
       setCart([]);
       setOfferCode("NONE");
-      setForm({ customerName: "", mobileNumber: "", orderType: "Takeaway", tableNumber: "", paymentMethod: "Cash", paymentStatus: "Unpaid", notes: "" });
-      toast({ title: `${result.orderNumber} created`, description: "Kitchen ticket is ready to print." });
+      setForm({ customerName: "", mobileNumber: "", orderType: "Takeaway", tableNumber: "", deliveryAddress: "", paymentMethod: "Cash", paymentStatus: "Unpaid", amountReceived: "", priority: "Normal", notes: "" });
+      toast({ title: `${result.orderNumber} sent to kitchen`, description: "Live tracking is open. Kitchen updates will appear automatically." });
     } catch (value) {
       toast({ title: "Order was not saved", description: value instanceof Error ? value.message : "Please try again." });
     } finally {
@@ -364,9 +408,9 @@ export default function RestaurantOperationsPage() {
     }
   }
 
-  async function changePaymentStatus(order: RestaurantOrder, paymentStatus: RestaurantPaymentStatus) {
+  async function changePaymentStatus(order: RestaurantOrder, paymentStatus: RestaurantPaymentStatus, amountReceived?: number, paymentMethod?: RestaurantPaymentMethod, actorId?: string) {
     try {
-      await updateRestaurantOrderPaymentStatus(order.id, paymentStatus);
+      await updateRestaurantOrderPaymentStatus(order.id, paymentStatus, amountReceived, paymentMethod, actorId || user?.uid);
       toast({ title: `${order.orderNumber} payment marked ${paymentStatus}` });
     } catch (value) {
       toast({ title: "Payment update failed", description: value instanceof Error ? value.message : "Please try again." });
@@ -493,6 +537,7 @@ export default function RestaurantOperationsPage() {
   const tabs: Array<{ id: Section; label: string; icon: typeof Plus }> = [
     { id: "new", label: "New Order", icon: Plus },
     { id: "active", label: `Active Orders (${activeOrders.length})`, icon: ChefHat },
+    { id: "payments", label: "Payments", icon: TrendingUp },
     { id: "history", label: "Order History", icon: History },
     { id: "summary", label: "Daily Summary", icon: TrendingUp }
   ];
@@ -567,8 +612,10 @@ export default function RestaurantOperationsPage() {
                 <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   <div className="space-y-2"><Label>Customer name (optional)</Label><Input value={form.customerName} onChange={(event) => setForm({ ...form, customerName: event.target.value })} /></div>
                   <div className="space-y-2"><Label>Mobile number (optional)</Label><Input inputMode="tel" value={form.mobileNumber} onChange={(event) => setForm({ ...form, mobileNumber: event.target.value })} /></div>
-                  <div className="space-y-2"><Label>Order type</Label><Select value={form.orderType} onValueChange={(value) => setForm({ ...form, orderType: value as RestaurantOrderType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Order type</Label><Select value={form.orderType} onValueChange={(value) => setForm({ ...form, orderType: value as RestaurantOrderType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Dine In">Dine In</SelectItem><SelectItem value="Takeaway">Takeaway</SelectItem><SelectItem value="Delivery">Delivery</SelectItem></SelectContent></Select></div>
                   {form.orderType === "Dine In" ? <div className="space-y-2"><Label>Table number</Label><Input value={form.tableNumber} onChange={(event) => setForm({ ...form, tableNumber: event.target.value })} required /></div> : null}
+                  {form.orderType === "Delivery" ? <div className="space-y-2 sm:col-span-2 lg:col-span-1 xl:col-span-2"><Label>Delivery address</Label><Textarea value={form.deliveryAddress} onChange={(event) => setForm({ ...form, deliveryAddress: event.target.value })} required /></div> : null}
+                  <div className="space-y-2"><Label>Priority</Label><Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value as typeof form.priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Normal">Normal</SelectItem><SelectItem value="Priority">Priority</SelectItem><SelectItem value="Urgent">Urgent</SelectItem></SelectContent></Select></div>
                 </CardContent>
               </Card>
               <Card>
@@ -628,8 +675,9 @@ export default function RestaurantOperationsPage() {
               <Card>
                 <CardHeader><CardTitle>Payment</CardTitle></CardHeader>
                 <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <div className="space-y-2"><Label>Method</Label><Select value={form.paymentMethod} onValueChange={(value) => setForm({ ...form, paymentMethod: value as RestaurantPaymentMethod })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem></SelectContent></Select></div>
-                  <div className="space-y-2"><Label>Status</Label><Select value={form.paymentStatus} onValueChange={(value) => setForm({ ...form, paymentStatus: value as RestaurantPaymentStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Method</Label><Select value={form.paymentMethod} onValueChange={(value) => setForm({ ...form, paymentMethod: value as RestaurantPaymentMethod })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="UPI">UPI</SelectItem><SelectItem value="Card">Card</SelectItem><SelectItem value="Online payment">Online payment</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Status</Label><Select value={form.paymentStatus} onValueChange={(value) => setForm({ ...form, paymentStatus: value as RestaurantPaymentStatus })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Unpaid">Unpaid</SelectItem><SelectItem value="Partially paid">Partially paid</SelectItem></SelectContent></Select></div>
+                  {form.paymentStatus === "Partially paid" ? <div className="space-y-2 sm:col-span-2"><Label>Amount received</Label><Input type="number" min="0" max={total} value={form.amountReceived} onChange={(event) => setForm({ ...form, amountReceived: event.target.value })} placeholder="Received amount" /><p className="text-xs text-muted-foreground">Pending: {currency(Math.max(0, total - Number(form.amountReceived || 0)))}</p></div> : null}
                   <div className="space-y-2 sm:col-span-2">
                     <Label>4. Apply offer if needed</Label>
                     <Select value={offerCode} onValueChange={(value) => setOfferCode(value as RestaurantOfferCode)}>
@@ -644,10 +692,10 @@ export default function RestaurantOperationsPage() {
                   </div>
                   {discountAmount > 0 ? <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm sm:col-span-2"><div className="flex justify-between"><span>Subtotal</span><span>{currency(subTotal)}</span></div><div className="flex justify-between text-emerald-300"><span>{offerLabels[offerCode]}</span><span>-{currency(discountAmount)}</span></div></div> : null}
                   <div className="flex items-center justify-between text-xl font-semibold sm:col-span-2"><span>Total</span><span>{currency(total)}</span></div>
-                  <Button className="h-11 sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Sending to kitchen..." : "Save Order & Send to Kitchen"}</Button>
+                  <Button className="h-12 text-base sm:col-span-2" disabled={saving || demoMode || !cart.length}>{saving ? "Sending to kitchen..." : "Send Order to Kitchen"}</Button>
                 </CardContent>
               </Card>
-              {selectedOrder ? <Card className="border-primary/40"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{selectedOrder.orderNumber} is ready</p><p className="text-sm text-muted-foreground">Print the kitchen ticket, send it to the cook, or WhatsApp the customer.</p></div><div className="grid gap-2 sm:flex sm:flex-wrap"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" variant="outline" onClick={() => sendToCustomer(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Customer</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></CardContent></Card> : null}
+              {selectedOrder ? <Card className="border-primary/40"><CardContent className="space-y-4 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{selectedOrder.orderNumber} sent to kitchen</p><p className="text-sm text-muted-foreground">Live progress: {selectedOrder.status}</p></div><div className="grid gap-2 sm:flex sm:flex-wrap"><Button type="button" variant="outline" onClick={() => sendToCook(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Cook</Button><Button type="button" variant="outline" onClick={() => sendToCustomer(selectedOrder)}><MessageCircle className="h-4 w-4" />Send to Customer</Button><Button type="button" onClick={() => printOrder(selectedOrder)}><Printer className="h-4 w-4" />Print KOT</Button></div></div><div className="grid grid-cols-5 gap-2 text-center text-[11px]">{progressSteps(selectedOrder).steps.map((step, index) => <div key={step} className={`rounded-lg border p-2 ${index <= progressSteps(selectedOrder).currentIndex ? "border-primary bg-primary/15 text-primary" : "border-white/10 text-muted-foreground"}`}>{step}</div>)}</div></CardContent></Card> : null}
             </div>
           </form>
         ) : null}
@@ -683,10 +731,9 @@ export default function RestaurantOperationsPage() {
                   <div className="flex justify-between border-t border-white/10 pt-3 text-sm"><span>{order.paymentMethod} · {order.paymentStatus}</span><strong>{currency(order.totalAmount)}</strong></div>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{localTime(order.createdAt)}</p>
                   <div className="grid gap-2 sm:flex sm:flex-wrap">
-                    {order.status === "New Order" ? <Button size="sm" onClick={() => changeStatus(order, "In Kitchen")}>Start Kitchen</Button> : null}
-                    {order.status === "In Kitchen" ? <Button size="sm" onClick={() => changeStatus(order, "Ready")}>Mark Ready</Button> : null}
-                    {order.status === "Ready" ? <Button size="sm" onClick={() => changeStatus(order, "Delivered")}>Mark Delivered</Button> : null}
-                    {order.paymentStatus === "Unpaid" ? <Button size="sm" variant="secondary" onClick={() => changePaymentStatus(order, "Paid")}>Mark Paid</Button> : null}
+                    <span className="rounded-full border border-white/10 px-3 py-2 text-xs">{order.priority || "Normal"}</span>
+                    <Button size="sm" variant="outline" disabled>Kitchen: {order.status}</Button>
+                    {order.paymentStatus !== "Paid" ? <Button size="sm" variant="secondary" onClick={() => changePaymentStatus(order, "Paid", order.totalAmount, order.paymentMethod, user?.uid)}>Mark Paid</Button> : null}
                     <Button size="sm" variant="outline" onClick={() => sendToCook(order)}><MessageCircle className="h-4 w-4" />Send to Cook</Button>
                     <Button size="sm" variant="outline" onClick={() => sendToCustomer(order)}><MessageCircle className="h-4 w-4" />Customer</Button>
                     <Button size="sm" variant="outline" onClick={() => printOrder(order)}><Printer className="h-4 w-4" />KOT</Button>
@@ -696,6 +743,32 @@ export default function RestaurantOperationsPage() {
               </Card>
             ))}
             </div>
+          </div>
+        ) : null}
+
+        {section === "payments" ? (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><h2 className="text-lg font-semibold">Payment Tracking</h2><p className="text-sm text-muted-foreground">Paid, unpaid aur partial payments ko yahi se close karo.</p></div>
+                <Select value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as typeof paymentFilter)}><SelectTrigger className="sm:w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">Today</SelectItem><SelectItem value="yesterday">Yesterday</SelectItem><SelectItem value="week">This week</SelectItem></SelectContent></Select>
+              </CardContent>
+            </Card>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[["Total sales", currency(paymentSummary.sales)], ["Paid amount", currency(paymentSummary.paid)], ["Unpaid amount", currency(paymentSummary.unpaid)], ["Partial balance", currency(paymentSummary.partial)], ["Cash collected", currency(paymentSummary.cash)], ["UPI collected", currency(paymentSummary.upi)], ["Orders", paymentOrders.length]].map(([label, value]) => <Card key={label}><CardContent className="p-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></CardContent></Card>)}
+            </div>
+            <Card>
+              <CardHeader><CardTitle>Pending / Partial Payments</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {paymentOrders.filter((order) => order.paymentStatus !== "Paid").length === 0 ? <p className="text-sm text-muted-foreground">No pending payments for this period.</p> : null}
+                {paymentOrders.filter((order) => order.paymentStatus !== "Paid").map((order) => (
+                  <div key={order.id} className="flex flex-col gap-3 rounded-lg border border-white/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div><p className="font-medium">{order.orderNumber} · {order.customerName || "Walk-in"}</p><p className="text-sm text-muted-foreground">{order.paymentMethod} · {order.paymentStatus} · Pending {currency(Number(order.pendingAmount || order.totalAmount))}</p></div>
+                    <div className="flex gap-2"><Button size="sm" onClick={() => changePaymentStatus(order, "Paid", order.totalAmount, order.paymentMethod, user?.uid)}>Mark Paid</Button><Button size="sm" variant="outline" onClick={() => sendToCustomer(order)}><MessageCircle className="h-4 w-4" />Reminder</Button></div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
         ) : null}
 

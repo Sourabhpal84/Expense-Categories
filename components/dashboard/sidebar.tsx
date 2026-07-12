@@ -15,6 +15,7 @@ const nav = [
   { href: "/dashboard/daily-closing", label: "Daily Closing", icon: BookOpenCheck },
   { href: "/dashboard/inventory", label: "Inventory", icon: Boxes },
   { href: "/dashboard/restaurant", label: "Restaurant Operations", icon: ChefHat },
+  { href: "/dashboard/kitchen", label: "Kitchen Dashboard", icon: ChefHat },
   { href: "/dashboard/crm", label: "CRM", icon: Users },
   { href: "/dashboard/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },

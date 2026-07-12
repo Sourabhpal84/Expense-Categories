@@ -350,10 +350,12 @@ export type NotificationItem = {
   createdAt: string;
 };
 
-export type RestaurantOrderStatus = "New Order" | "In Kitchen" | "Ready" | "Delivered" | "Cancelled";
-export type RestaurantOrderType = "Dine In" | "Takeaway";
-export type RestaurantPaymentMethod = "Cash" | "UPI";
-export type RestaurantPaymentStatus = "Paid" | "Unpaid";
+export type RestaurantOrderStatus = "New" | "Accepted" | "Preparing" | "Ready" | "Completed" | "Cancelled" | "New Order" | "In Kitchen" | "Delivered";
+export type RestaurantOrderType = "Dine In" | "Takeaway" | "Delivery";
+export type RestaurantPaymentMethod = "Cash" | "UPI" | "Card" | "Online payment" | "Other";
+export type RestaurantPaymentStatus = "Paid" | "Unpaid" | "Partially paid";
+export type RestaurantPriority = "Normal" | "Priority" | "Urgent";
+export type RestaurantRefundStatus = "No refund required" | "Refund pending" | "Refunded";
 
 export type RestaurantMenuVariant = {
   name: string;
@@ -417,13 +419,32 @@ export type RestaurantOrder = {
   offerCode?: RestaurantOfferCode;
   offerLabel?: string;
   discountAmount?: number;
+  manualDiscountAmount?: number;
+  manualDiscountType?: "flat" | "percent";
   subTotal?: number;
+  taxAmount?: number;
+  deliveryCharge?: number;
+  packagingCharge?: number;
   paymentMethod: RestaurantPaymentMethod;
   paymentStatus: RestaurantPaymentStatus;
+  amountReceived?: number;
+  pendingAmount?: number;
   totalAmount: number;
   status: RestaurantOrderStatus;
+  priority?: RestaurantPriority;
+  deliveryAddress?: string;
+  kitchenNotes?: string;
+  cancellationReason?: string;
+  refundStatus?: RestaurantRefundStatus;
+  idempotencyKey?: string;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
+  acceptedAt?: string;
+  preparingAt?: string;
+  readyAt?: string;
+  completedAt?: string;
   deliveredAt?: string;
   cancelledAt?: string;
   paidAt?: string;
