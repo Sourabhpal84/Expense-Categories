@@ -88,11 +88,17 @@ export default function ReportsPage() {
   const { expenses, revenues, metrics } = useBusinessData();
   const [selectedDay, setSelectedDay] = useState(new Date().toISOString().slice(0, 10));
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [rangeStart, setRangeStart] = useState(new Date().toISOString().slice(0, 10));
+  const [rangeEnd, setRangeEnd] = useState(new Date().toISOString().slice(0, 10));
   const taxRows = revenues.map((item) => ({ date: item.date, source: item.source || "manual", amount: item.amount, estimatedGst: Math.round(item.amount * 0.05) }));
   const dailyExpenses = expenses.filter((item) => item.date === selectedDay);
   const dailyRevenues = revenues.filter((item) => item.date === selectedDay);
   const monthlyExpenses = expenses.filter((item) => item.date.startsWith(selectedMonth));
   const monthlyRevenues = revenues.filter((item) => item.date.startsWith(selectedMonth));
+  const normalizedRangeStart = rangeStart <= rangeEnd ? rangeStart : rangeEnd;
+  const normalizedRangeEnd = rangeStart <= rangeEnd ? rangeEnd : rangeStart;
+  const rangeExpenses = expenses.filter((item) => item.date >= normalizedRangeStart && item.date <= normalizedRangeEnd);
+  const rangeRevenues = revenues.filter((item) => item.date >= normalizedRangeStart && item.date <= normalizedRangeEnd);
   const monthlyDetail = useMemo(() => Array.from(new Set([...revenues.map((item) => item.date.slice(0, 7)), ...expenses.map((item) => item.date.slice(0, 7))]))
     .sort((a, b) => b.localeCompare(a))
     .map((month) => {
@@ -128,6 +134,25 @@ export default function ReportsPage() {
               <Printer className="h-4 w-4" />
               Selected Month PDF
             </Button>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[.03] p-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <div className="space-y-2">
+                <Label>From date</Label>
+                <Input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>To date</Label>
+                <Input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
+              </div>
+              <Button onClick={() => printReport(rangeExpenses, rangeRevenues, `MAGNEETOZ Report - ${normalizedRangeStart} to ${normalizedRangeEnd}`)}>
+                <Printer className="h-4 w-4" />
+                Date Range PDF
+              </Button>
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Selected range: {normalizedRangeStart} to {normalizedRangeEnd} · Revenue {currency(rangeRevenues.reduce((sum, item) => sum + item.amount, 0))} · Expenses {currency(rangeExpenses.reduce((sum, item) => sum + item.amount, 0))}
+            </p>
           </div>
           <div className="flex flex-wrap gap-3">
           <Button onClick={() => printReport(expenses, revenues, "MAGNEETOZ Daily Report")}>
